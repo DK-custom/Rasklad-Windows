@@ -1,0 +1,44 @@
+name: Build Windows packages
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Prepare verified Inno Setup 6.7.3 compiler
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $setup = Join-Path $env:RUNNER_TEMP 'innosetup-6.7.3.exe'
+          Invoke-WebRequest 'https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe' -OutFile $setup
+          $expected = '9C73C3BAE7ED48D44112A0F48E66742C00090BDB5BEF71D9D3C056C66E97B732'
+          if ((Get-FileHash $setup).Hash -ne $expected) { throw 'Inno Setup SHA-256 mismatch' }
+          $signature = Get-AuthenticodeSignature $setup
+          if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Pyrsys B.V.') { throw 'Invalid compiler signature' }
+          $compilerDir = Join-Path $env:RUNNER_TEMP 'InnoSetup'
+          $arguments = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CURRENTUSER /NOICONS /TASKS="" /DIR="{0}"' -f $compilerDir
+          $process = Start-Process $setup -ArgumentList $arguments -WindowStyle Hidden -PassThru -Wait
+          if ($process.ExitCode -ne 0) { throw 'Compiler setup failed' }
+
+      - name: Build executable, installer, portable and source packages
+        shell: powershell
+        run: |
+          .\build-release.ps1 -IsccPath (Join-Path $env:RUNNER_TEMP 'InnoSetup\ISCC.exe')
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Rasklad-Windows-packages
+          path: dist/*
+          if-no-files-found: error

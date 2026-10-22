@@ -1,0 +1,17 @@
+/build/
+/dist/
+*.pfx
+*.p12
+*.key
+*.user
+*.log
+*.log.previous
+Rasklad-settings.txt
+Rasklad-words.txt
+Rasklad-exclusions.txt
+Rasklad-replacements.txt
+Rasklad-tray-preview.png
+hint-Light.png
+hint-Dark.png
+menu-Light.png
+menu-Dark.png
