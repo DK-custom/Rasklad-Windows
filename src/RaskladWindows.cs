@@ -433,7 +433,7 @@ namespace RaskladWindows {
         private readonly TrayMenu trayMenu;
         internal TrayMenu MenuForTest { get { return trayMenu; } }
         private readonly SuggestionPopup suggestionPopup = new SuggestionPopup();
-        private readonly ToolStripMenuItem autoItem, typoItem, spellingItem, codeItem, excludeItem, customWordItem;
+        private readonly ToolStripMenuItem autoItem, typoItem, spellingItem, codeItem, copilotItem, excludeItem, customWordItem;
         private readonly Native.HookProc keyboardCallback, mouseCallback;
         private readonly Control dispatcher;
         private readonly List<KeyStroke> word = new List<KeyStroke>();
@@ -462,6 +462,7 @@ namespace RaskladWindows {
         private bool capsActive, capsKeyDown;
         private int editingRevision;
         private bool autoEnabled = true, typoEnabled = true, spellingEnabled = true, codeProtectionEnabled = true, undoPending;
+        private bool copilotEnabled, copilotChord;
         internal bool PopupVisibleForTest { get { return suggestionPopup.Visible; } }
         internal bool PopupFitsForTest { get { return suggestionPopup.FitsForTest; } }
         internal bool PopupNoTaskbarForTest { get { return suggestionPopup.NoTaskbarButtonForTest; } }
@@ -499,12 +500,16 @@ namespace RaskladWindows {
             codeItem = new ToolStripMenuItem("Не править в редакторах кода и терминалах", null, delegate {
                 codeProtectionEnabled = !codeProtectionEnabled; codeItem.Checked = codeProtectionEnabled; SaveSettings(); });
             codeItem.Checked = codeProtectionEnabled;
+            copilotItem = new ToolStripMenuItem("Клавиша Copilot как Pause/Break (эксперимент)", null, delegate {
+                copilotEnabled = !copilotEnabled; copilotItem.Checked = copilotEnabled; copilotChord = false; SaveSettings(); });
+            copilotItem.Checked = copilotEnabled;
             excludeItem = new ToolStripMenuItem("Исключить последнее приложение ввода", null, delegate { ToggleExcludedApp(); });
             customWordItem = new ToolStripMenuItem("Добавить последнее незнакомое слово", null, delegate { ToggleCustomWord(); });
             menu.Items.Add(autoItem);
             menu.Items.Add(typoItem);
             menu.Items.Add(spellingItem);
             menu.Items.Add(codeItem);
+            menu.Items.Add(copilotItem);
             menu.Items.Add(excludeItem);
             menu.Items.Add(customWordItem);
             menu.Items.Add(new ToolStripMenuItem("IT-словарь: найти термин…", null, delegate {
@@ -619,6 +624,7 @@ namespace RaskladWindows {
                 if (line == "typos=0") typoEnabled = false;
                 if (line == "hints=0") spellingEnabled = false;
                 if (line == "protectCode=0") codeProtectionEnabled = false;
+                if (line == "copilot=1") copilotEnabled = true;
             }
         }
 
@@ -629,7 +635,8 @@ namespace RaskladWindows {
                     "auto=" + (autoEnabled ? "1" : "0"),
                     "typos=" + (typoEnabled ? "1" : "0"),
                     "hints=" + (spellingEnabled ? "1" : "0"),
-                    "protectCode=" + (codeProtectionEnabled ? "1" : "0")
+                    "protectCode=" + (codeProtectionEnabled ? "1" : "0"),
+                    "copilot=" + (copilotEnabled ? "1" : "0")
                 }, Encoding.UTF8);
             } catch (Exception ex) {
                 tray.Text = "Ошибка сохранения настроек: " + ex.GetType().Name;
@@ -1282,6 +1289,17 @@ namespace RaskladWindows {
             (Native.GetAsyncKeyState(Native.VK_LWIN) & 0x8000) != 0 ||
             (Native.GetAsyncKeyState(Native.VK_RWIN) & 0x8000) != 0; }
 
+        private static bool Pressed(int vk) { return (Native.GetAsyncKeyState(vk) & 0x8000) != 0; }
+
+        /// Pause от клавиши Copilot: без метки, чтобы его обработал тот же путь, что и настоящий Pause.
+        private static void SendCopilotPause() {
+            Native.Input down = new Native.Input(); down.type = 1; down.data.key.vk = Native.VK_PAUSE;
+            Native.Input up = down; up.data.key.flags = Native.KEYEVENTF_KEYUP;
+            Native.Input[] keys = { down, up };
+            if (Native.SendInput((uint)keys.Length, keys, Marshal.SizeOf(typeof(Native.Input))) != keys.Length)
+                DiagnosticLog.Write("copilot.send_failed");
+        }
+
         private static bool WinDown() { return
             (Native.GetAsyncKeyState(Native.VK_LWIN) & 0x8000) != 0 ||
             (Native.GetAsyncKeyState(Native.VK_RWIN) & 0x8000) != 0; }
@@ -1329,6 +1347,25 @@ namespace RaskladWindows {
                 if (message == Native.WM_KEYDOWN || message == Native.WM_SYSKEYDOWN) {
                     if (!capsKeyDown) { capsActive = !capsActive; capsKeyDown = true; }
                 } else if (message == Native.WM_KEYUP || message == Native.WM_SYSKEYUP) capsKeyDown = false;
+            }
+            if (copilotEnabled && key.extraInfo != Native.OurInputMarker && key.extraInfo != Native.ReplayInputMarker) {
+                // Клавиша Copilot: левые Win+Shift+F23. F23 не пропускаем — иначе Windows запустит Copilot;
+                // vkE8 при зажатом Win не даёт открыться «Пуску»; Pause — только после отпускания Win и Shift,
+                // иначе перенабранный текст превратится в сочетания Win+Shift+буква.
+                bool keyDown = message == Native.WM_KEYDOWN || message == Native.WM_SYSKEYDOWN;
+                if (vk == Native.VK_F23 && (copilotChord || keyDown && Pressed(Native.VK_LWIN) && Pressed(160))) {
+                    if (keyDown && !copilotChord) {
+                        copilotChord = true;
+                        Native.Input[] mask = { VirtualKey(0xE8, false), VirtualKey(0xE8, true) };
+                        Native.SendInput((uint)mask.Length, mask, Marshal.SizeOf(typeof(Native.Input)));
+                    }
+                    return (IntPtr)1;
+                }
+                if (copilotChord && !keyDown && (vk == Native.VK_LWIN || vk == 160) &&
+                    !Pressed(vk == Native.VK_LWIN ? 160 : Native.VK_LWIN)) {
+                    copilotChord = false;
+                    dispatcher.BeginInvoke((Action)SendCopilotPause);
+                }
             }
             if (vk == Native.VK_PAUSE && key.extraInfo != Native.ReplayInputMarker) {
                 if ((message == Native.WM_KEYUP || message == Native.WM_SYSKEYUP) && vk == suppressedKeyUp) {
