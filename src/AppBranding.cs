@@ -15,6 +15,14 @@ using System.Windows.Forms;
 namespace RaskladWindows {
     static class AppBranding {
         internal const string Name = "Rasklad";
+        /// Версия для меню: первые три компонента AssemblyFileVersion, как в именах пакетов.
+        internal static string Version {
+            get {
+                AssemblyFileVersionAttribute file = (AssemblyFileVersionAttribute)Attribute.GetCustomAttribute(
+                    typeof(AppBranding).Assembly, typeof(AssemblyFileVersionAttribute));
+                return file == null ? "?" : new Version(file.Version).ToString(3);
+            }
+        }
         internal static readonly Icon TrayIcon = LoadIcon(SystemInformation.SmallIconSize, "Tray.Icon");
         internal static readonly Icon WindowIcon = LoadIcon(SystemInformation.IconSize);
         private static Icon LoadIcon(Size size, string resource = "App.Icon") {

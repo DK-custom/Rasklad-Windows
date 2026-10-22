@@ -486,26 +486,33 @@ namespace RaskladWindows {
             if (!Program.TestMode) LoadSettings();
 
             TrayMenu menu = new TrayMenu(); trayMenu = menu;
-            autoItem = new ToolStripMenuItem("Автопереключение", null, delegate {
+            autoItem = new ToolStripMenuItem("Автопереключение раскладки", null, delegate {
                 autoEnabled = !autoEnabled; autoItem.Checked = autoEnabled; word.Clear(); SaveSettings(); });
             autoItem.Checked = autoEnabled;
-            typoItem = new ToolStripMenuItem("Автоисправление опечаток", null, delegate {
+            typoItem = new ToolStripMenuItem("Исправлять опечатки", null, delegate {
                 typoEnabled = !typoEnabled; typoItem.Checked = typoEnabled; word.Clear(); SaveSettings(); });
             typoItem.Checked = typoEnabled;
             spellingItem = new ToolStripMenuItem("Всплывающие подсказки", null, delegate {
                 spellingEnabled = !spellingEnabled; spellingItem.Checked = spellingEnabled;
                 if (!spellingEnabled) suggestionPopup.Dismiss(); SaveSettings(); });
             spellingItem.Checked = spellingEnabled;
-            codeItem = new ToolStripMenuItem("Не править в редакторах кода и терминалах", null, delegate {
+            codeItem = new ToolStripMenuItem("Не править код и терминалы", null, delegate {
                 codeProtectionEnabled = !codeProtectionEnabled; codeItem.Checked = codeProtectionEnabled; SaveSettings(); });
             codeItem.Checked = codeProtectionEnabled;
             excludeItem = new ToolStripMenuItem("Исключить последнее приложение ввода", null, delegate { ToggleExcludedApp(); });
             customWordItem = new ToolStripMenuItem("Добавить последнее незнакомое слово", null, delegate { ToggleCustomWord(); });
+            // Разделы как в macOS-версии: правка, клавиши, слова; внизу служебное.
+            menu.AddHeader("Правка");
             menu.Items.Add(autoItem);
             menu.Items.Add(typoItem);
             menu.Items.Add(spellingItem);
             menu.Items.Add(codeItem);
             menu.Items.Add(excludeItem);
+            menu.AddHeader("Клавиши");
+            ToolStripMenuItem pauseHelp = new ToolStripMenuItem("Pause/Break — отмена замены, раскладка слова или выделенного");
+            pauseHelp.Enabled = false;
+            menu.Items.Add(pauseHelp);
+            menu.AddHeader("Слова");
             menu.Items.Add(customWordItem);
             menu.Items.Add(new ToolStripMenuItem("IT-словарь: найти термин…", null, delegate {
                 if (dictionaryWindow == null || dictionaryWindow.IsDisposed) dictionaryWindow = new ITDictionaryWindow(itDictionary);
@@ -513,19 +520,22 @@ namespace RaskladWindows {
                 dictionaryWindow.SearchFor(lastUnknownWord);
             }));
             menu.Opening += delegate { excludeItem.Enabled = !String.IsNullOrEmpty(lastApp);
-                excludeItem.Text = lastApp == null ? "Исключить последнее приложение ввода" : "Не обрабатывать в " + lastApp;
+                excludeItem.Text = lastApp == null ? "Исключить последнее приложение ввода" : "Не править в «" + lastApp + "»";
                 excludeItem.Checked = lastApp != null && excludedApps.Contains(lastApp);
                 customWordItem.Enabled = lastUnknownWord != null;
                 customWordItem.Text = lastUnknownWord == null ? "Добавить последнее незнакомое слово" :
                     "Считать правильным: " + lastUnknownWord + (lastUnknownRussian ? " (RU)" : " (EN)");
                 customWordItem.Checked = lastUnknownWord != null && customWords.Contains(CustomKey(lastUnknownWord, lastUnknownRussian)); };
             menu.Items.Add(new ToolStripSeparator());
-            menu.Items.Add(new ToolStripMenuItem("Открыть журнал диагностики", null, delegate {
+            menu.Items.Add(new ToolStripMenuItem("Журнал диагностики", null, delegate {
                 try {
                     if (!File.Exists(DiagnosticLog.PathName)) File.WriteAllText(DiagnosticLog.PathName, "");
                     Process.Start("notepad.exe", "\"" + DiagnosticLog.PathName + "\"");
                 } catch (Exception) { tray.Text = "Не удалось открыть журнал диагностики"; }
             }));
+            ToolStripMenuItem versionItem = new ToolStripMenuItem(AppBranding.Name + " " + AppBranding.Version);
+            versionItem.Enabled = false;
+            menu.Items.Add(versionItem);
             menu.Items.Add(new ToolStripMenuItem("Выход", null, delegate { ExitThread(); }));
             tray = new NotifyIcon();
             tray.Icon = AppBranding.TrayIcon;

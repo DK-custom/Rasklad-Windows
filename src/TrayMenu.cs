@@ -9,13 +9,21 @@ using System.Windows.Forms;
 
 namespace RaskladWindows {
     sealed class TrayMenu : ContextMenuStrip {
-        private readonly Font menuFont;
+        private readonly Font menuFont, headerFont;
+        /// Метка заголовка раздела (неактивная строка мелким шрифтом).
+        internal static readonly object HeaderTag = new object();
         internal bool? ForceDarkForTest;
         internal bool DarkForTest { get; private set; }
         internal TrayMenu() {
             menuFont = new Font(SystemFonts.MenuFont.FontFamily, 10F, SystemFonts.MenuFont.Style, GraphicsUnit.Point);
+            headerFont = new Font(SystemFonts.MenuFont.FontFamily, 8.5F, SystemFonts.MenuFont.Style, GraphicsUnit.Point);
             Font = menuFont;
             ShowImageMargin = false; ShowCheckMargin = true;
+        }
+        internal void AddHeader(string text) {
+            ToolStripMenuItem item = new ToolStripMenuItem(text);
+            item.Enabled = false; item.Tag = HeaderTag;
+            Items.Add(item);
         }
         protected override void OnOpening(CancelEventArgs e) {
             DarkForTest = (Program.TestMode && ForceDarkForTest.HasValue ? ForceDarkForTest.Value : HintTheme.IsDark()) && !SystemInformation.HighContrast;
@@ -23,7 +31,7 @@ namespace RaskladWindows {
             BackColor = palette.Back; ForeColor = palette.Fore;
             Renderer = new TrayMenuRenderer(palette);
             foreach (ToolStripItem item in Items) {
-                item.Font = menuFont;
+                item.Font = item.Tag == HeaderTag ? headerFont : menuFont;
                 item.Margin = Padding.Empty;
                 if (item is ToolStripMenuItem) item.Padding = Padding.Empty;
             }
@@ -41,7 +49,7 @@ namespace RaskladWindows {
         }
         protected override void Dispose(bool disposing) {
             base.Dispose(disposing);
-            if (disposing) menuFont.Dispose();
+            if (disposing) { menuFont.Dispose(); headerFont.Dispose(); }
         }
     }
 
@@ -101,7 +109,10 @@ namespace RaskladWindows {
                     Native.ShowWindow(form.Handle, 1);
                     TrayMenu menu = app.MenuForTest;
                     Require(app.BrandingForTest, "tray name/icon mismatch");
-                    Require(menu.Items.Count == 10 && menu.Items[9].Text == "Выход", "menu commands changed");
+                    Require(menu.Items.Count == 15 && menu.Items[14].Text == "Выход", "menu commands changed");
+                    foreach (int header in new[] { 0, 6, 8 })
+                        Require(menu.Items[header].Tag == TrayMenu.HeaderTag && !menu.Items[header].Enabled, "section header missing at " + header);
+                    Require(menu.Items[13].Text == AppBranding.Name + " " + AppBranding.Version && !menu.Items[13].Enabled, "version row missing");
                     Require(menu.Font.SizeInPoints == 10F && menu.Font.FontFamily.Equals(SystemFonts.MenuFont.FontFamily), "menu font must be 10pt with system family");
                     foreach (bool dark in new[] { false, true }) {
                         menu.ForceDarkForTest = dark;
@@ -114,14 +125,14 @@ namespace RaskladWindows {
                             Require(menu.ClientRectangle.Contains(item.Bounds), "clipped row: " + item.Text + " menu=" + menu.ClientRectangle + " item=" + item.Bounds);
                             if (!(item is ToolStripSeparator)) Require(TextRenderer.MeasureText(item.Text, menu.Font).Width <= menu.Width - 40, "clipped label: " + item.Text);
                         }
-                        for (int i = 0; i < 4; i++) {
+                        for (int i = 1; i <= 4; i++) {
                             ToolStripMenuItem item = (ToolStripMenuItem)menu.Items[i];
                             bool before = item.Checked; item.PerformClick();
                             Require(item.Checked != before, "toggle stopped working");
                             item.PerformClick(); Require(item.Checked == before, "toggle restore failed");
                         }
                         menu.Show(form, new Point(20, 20));
-                        menu.Items[0].Select();
+                        menu.Items[1].Select();
                         using (Bitmap bitmap = new Bitmap(menu.Width, menu.Height)) {
                             menu.DrawToBitmap(bitmap, new Rectangle(Point.Empty, bitmap.Size));
                             bitmap.Save(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "menu-" + (dark ? "Dark" : "Light") + ".png"), System.Drawing.Imaging.ImageFormat.Png);
