@@ -38,8 +38,7 @@
 Workflow `build.yml` собирает артефакты, но не публикует релизы. Репозиторий `DK-custom/Rasklad-Windows` создан приватным, `main` отправлен. Публикация — отдельное решение владельца; релиз сначала создаётся черновиком:
 
 ```powershell
-# репозиторий уже создан приватным; открыть после проверки на Windows:
-gh repo edit DK-custom/Rasklad-Windows --visibility public --accept-visibility-change-consequences
+# Репозиторий остаётся приватным по решению владельца.
 gh release create v1.0.30 --repo DK-custom/Rasklad-Windows --draft --target main `
   --title 'Rasklad 1.0.30 для Windows' `
   --notes-file dist/Rasklad-1.0.30-release-notes.md `

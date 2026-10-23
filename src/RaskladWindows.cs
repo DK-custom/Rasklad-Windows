@@ -2032,7 +2032,7 @@ namespace RaskladWindows {
                 }
                 bool firstInstance;
                 // Keep the previous mutex ID to prevent older copies from running alongside Rasklad.
-                using (Mutex mutex = new Mutex(false, "Local\\Rasklad-Windows", out firstInstance)) {
+                using (Mutex mutex = new Mutex(false, "Local\\PuntoWinSpeller", out firstInstance)) {
                     if (!firstInstance) {
                         MessageBox.Show("Rasklad уже запущен.", AppBranding.Name, MessageBoxButtons.OK, MessageBoxIcon.Information);
                         return 3;
