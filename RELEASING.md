@@ -14,6 +14,7 @@
    .\build\Rasklad.exe --menu-test
    .\build\Rasklad.exe --hint-test
    .\build\Rasklad.exe --integration-test-apostrophe
+   .\build\Rasklad.exe --copilot-test
    ```
 
    Проверять exit code, а не только вывод. UI-тесты требуют интерактивного рабочего стола; фокус не должен перехватываться другими окнами. Не запускать вместе с рабочей копией: обе используют клавиатурные hooks.

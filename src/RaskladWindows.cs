@@ -1298,6 +1298,7 @@ namespace RaskladWindows {
             Native.Input[] keys = { down, up };
             if (Native.SendInput((uint)keys.Length, keys, Marshal.SizeOf(typeof(Native.Input))) != keys.Length)
                 DiagnosticLog.Write("copilot.send_failed");
+            else DiagnosticLog.Write("copilot.pause_sent");
         }
 
         private static bool WinDown() { return
@@ -1356,6 +1357,7 @@ namespace RaskladWindows {
                 if (vk == Native.VK_F23 && (copilotChord || keyDown && Pressed(Native.VK_LWIN) && Pressed(160))) {
                     if (keyDown && !copilotChord) {
                         copilotChord = true;
+                        DiagnosticLog.Write("copilot.captured");
                         Native.Input[] mask = { VirtualKey(0xE8, false), VirtualKey(0xE8, true) };
                         Native.SendInput((uint)mask.Length, mask, Marshal.SizeOf(typeof(Native.Input)));
                     }
@@ -2050,6 +2052,7 @@ namespace RaskladWindows {
         [STAThread] static int Main(string[] args) {
             try {
                 if (args.Length == 1 && args[0] == "--dpi-test") return UiDpiChecks.Run();
+                if (args.Length == 1 && args[0] == "--copilot-test") return CopilotChecks.Run();
                 if (args.Length == 1 && args[0] == "--self-test") return SelfTest();
                 if (args.Length == 1 && args[0] == "--hint-test") return HintDesignTests.Run();
                 if (args.Length == 1 && args[0] == "--menu-test") return TrayMenuTests.Run();

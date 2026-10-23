@@ -101,7 +101,11 @@ namespace RaskladWindows {
                     Native.ShowWindow(form.Handle, 1);
                     TrayMenu menu = app.MenuForTest;
                     Require(app.BrandingForTest, "tray name/icon mismatch");
-                    Require(menu.Items.Count == 10 && menu.Items[9].Text == "Выход", "menu commands changed");
+                    Require(menu.Items.Count == 11 && menu.Items[10].Text == "Выход", "menu commands changed");
+                    ToolStripMenuItem copilot = (ToolStripMenuItem)menu.Items[4];
+                    Require(!copilot.Checked, "Copilot must be opt-in");
+                    copilot.PerformClick(); Require(copilot.Checked, "Copilot toggle failed");
+                    copilot.PerformClick(); Require(!copilot.Checked, "Copilot toggle restore failed");
                     Require(menu.Font.SizeInPoints == 10F && menu.Font.FontFamily.Equals(SystemFonts.MenuFont.FontFamily), "menu font must be 10pt with system family");
                     foreach (bool dark in new[] { false, true }) {
                         menu.ForceDarkForTest = dark;

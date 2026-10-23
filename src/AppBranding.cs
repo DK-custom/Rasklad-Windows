@@ -10,7 +10,7 @@ using System.Windows.Forms;
 [assembly: AssemblyProduct("Rasklad")]
 [assembly: AssemblyDescription("Русско-английская раскладка и правописание Windows")]
 [assembly: AssemblyVersion("1.0.0.0")]
-[assembly: AssemblyFileVersion("1.0.30.0")]
+[assembly: AssemblyFileVersion("1.0.30.1")]
 
 namespace RaskladWindows {
     static class AppBranding {
