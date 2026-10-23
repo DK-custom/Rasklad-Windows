@@ -481,7 +481,7 @@ namespace RaskladWindows {
             russianLayout = Native.LoadKeyboardLayout("00000419", 0);
             englishLayout = Native.LoadKeyboardLayout("00000409", 0);
             if (russianLayout == IntPtr.Zero || englishLayout == IntPtr.Zero)
-                throw new InvalidOperationException("Не удалось загрузить русскую и английскую раскладки.");
+                throw new InvalidOperationException(UiText.Get("Не удалось загрузить русскую и английскую раскладки.", "Could not load the Russian and English keyboard layouts."));
             if (!Program.TestMode && File.Exists(exclusionsPath))
                 foreach (string line in File.ReadAllLines(exclusionsPath)) {
                     string name = line.Trim();
@@ -492,70 +492,70 @@ namespace RaskladWindows {
             if (!Program.TestMode) LoadSettings();
 
             TrayMenu menu = new TrayMenu(); trayMenu = menu;
-            autoItem = new ToolStripMenuItem("Автопереключение раскладки", null, delegate {
+            autoItem = new ToolStripMenuItem(UiText.Get("Автопереключение раскладки", "Automatic layout switching"), null, delegate {
                 autoEnabled = !autoEnabled; autoItem.Checked = autoEnabled; word.Clear(); SaveSettings(); });
             autoItem.Checked = autoEnabled;
-            typoItem = new ToolStripMenuItem("Исправлять опечатки", null, delegate {
+            typoItem = new ToolStripMenuItem(UiText.Get("Исправлять опечатки", "Correct typos"), null, delegate {
                 typoEnabled = !typoEnabled; typoItem.Checked = typoEnabled; word.Clear(); SaveSettings(); });
             typoItem.Checked = typoEnabled;
-            spellingItem = new ToolStripMenuItem("Всплывающие подсказки", null, delegate {
+            spellingItem = new ToolStripMenuItem(UiText.Get("Всплывающие подсказки", "Pop-up hints"), null, delegate {
                 spellingEnabled = !spellingEnabled; spellingItem.Checked = spellingEnabled;
                 if (!spellingEnabled) suggestionPopup.Dismiss(); SaveSettings(); });
             spellingItem.Checked = spellingEnabled;
-            codeItem = new ToolStripMenuItem("Не править код и терминалы", null, delegate {
+            codeItem = new ToolStripMenuItem(UiText.Get("Не править код и терминалы", "Leave code and terminals unchanged"), null, delegate {
                 codeProtectionEnabled = !codeProtectionEnabled; codeItem.Checked = codeProtectionEnabled; SaveSettings(); });
             codeItem.Checked = codeProtectionEnabled;
-            copilotItem = new ToolStripMenuItem("Использовать клавишу Copilot", null, delegate {
+            copilotItem = new ToolStripMenuItem(UiText.Get("Использовать клавишу Copilot", "Use the Copilot key"), null, delegate {
                 copilotEnabled = !copilotEnabled; copilotItem.Checked = copilotEnabled; copilotChord = false; SaveSettings(); });
             copilotItem.Checked = copilotEnabled;
-            fnItem = new ToolStripMenuItem("Fn — переключать RU / EN", null, delegate {
+            fnItem = new ToolStripMenuItem(UiText.Get("Fn — переключать RU / EN", "Fn — switch RU / EN"), null, delegate {
                 fnEnabled = !fnEnabled; fnItem.Checked = fnEnabled; fnArmed = fnKeyDown = false; SaveSettings(); });
             fnItem.Checked = fnEnabled;
-            excludeItem = new ToolStripMenuItem("Исключить последнее приложение ввода", null, delegate { ToggleExcludedApp(); });
-            customWordItem = new ToolStripMenuItem("Добавить последнее незнакомое слово", null, delegate { ToggleCustomWord(); });
-            menu.AddHeader("Правка");
+            excludeItem = new ToolStripMenuItem(UiText.Get("Исключить последнее приложение ввода", "Exclude the last typing application"), null, delegate { ToggleExcludedApp(); });
+            customWordItem = new ToolStripMenuItem(UiText.Get("Добавить последнее незнакомое слово", "Add the last unrecognized word"), null, delegate { ToggleCustomWord(); });
+            menu.AddHeader(UiText.Get("Правка", "Corrections"));
             menu.Items.Add(autoItem);
             menu.Items.Add(typoItem);
             menu.Items.Add(spellingItem);
             menu.Items.Add(codeItem);
             menu.Items.Add(excludeItem);
-            menu.AddHeader("Клавиши");
+            menu.AddHeader(UiText.Get("Клавиши", "Keys"));
             menu.Items.Add(copilotItem);
             menu.Items.Add(fnItem);
-            menu.Items.Add(new ToolStripMenuItem("Copilot / Pause — смена и отмена") { Enabled = false });
-            menu.AddHeader("Слова");
+            menu.Items.Add(new ToolStripMenuItem(UiText.Get("Copilot / Pause — смена и отмена", "Copilot / Pause — convert and undo")) { Enabled = false });
+            menu.AddHeader(UiText.Get("Слова", "Words"));
             menu.Items.Add(customWordItem);
-            menu.Items.Add(new ToolStripMenuItem("IT-словарь: найти термин…", null, delegate {
+            menu.Items.Add(new ToolStripMenuItem(UiText.Get("IT-словарь: найти термин…", "IT dictionary: find a term…"), null, delegate {
                 if (dictionaryWindow == null || dictionaryWindow.IsDisposed) dictionaryWindow = new ITDictionaryWindow(itDictionary);
                 dictionaryWindow.Show(); dictionaryWindow.Activate();
                 dictionaryWindow.SearchFor(lastUnknownWord);
             }));
             menu.Opening += delegate { excludeItem.Enabled = !String.IsNullOrEmpty(lastApp);
-                excludeItem.Text = lastApp == null ? "Исключить последнее приложение ввода" : "Не править в «" + lastApp + "»";
+                excludeItem.Text = lastApp == null ? UiText.Get("Исключить последнее приложение ввода", "Exclude the last typing application") : UiText.Get("Не править в «", "Do not correct in “") + lastApp + UiText.Get("»", "”");
                 excludeItem.Checked = lastApp != null && excludedApps.Contains(lastApp);
                 customWordItem.Enabled = lastUnknownWord != null;
-                customWordItem.Text = lastUnknownWord == null ? "Добавить последнее незнакомое слово" :
-                    "Считать правильным: " + lastUnknownWord + (lastUnknownRussian ? " (RU)" : " (EN)");
+                customWordItem.Text = lastUnknownWord == null ? UiText.Get("Добавить последнее незнакомое слово", "Add the last unrecognized word") :
+                    UiText.Get("Считать правильным: ", "Accept spelling: ") + lastUnknownWord + (lastUnknownRussian ? " (RU)" : " (EN)");
                 customWordItem.Checked = lastUnknownWord != null && customWords.Contains(CustomKey(lastUnknownWord, lastUnknownRussian)); };
             menu.Items.Add(new ToolStripSeparator());
-            startupItem = new ToolStripMenuItem("Запускать при входе в Windows", null, delegate {
+            startupItem = new ToolStripMenuItem(UiText.Get("Запускать при входе в Windows", "Start when signing in to Windows"), null, delegate {
                 try { startup.SetEnabled(!startup.Enabled); }
                 catch (Exception ex) {
                     DiagnosticLog.Write("error.startup_registration");
-                    MessageBox.Show("Не удалось изменить автозагрузку: " + ex.Message, AppBranding.Name, MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    MessageBox.Show(UiText.Get("Не удалось изменить автозагрузку: ", "Could not change startup settings: ") + ex.Message, AppBranding.Name, MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
                 RefreshStartupItem();
             });
             menu.Items.Add(startupItem);
             menu.Opening += delegate { RefreshStartupItem(); };
-            menu.Items.Add(new ToolStripMenuItem("Журнал диагностики", null, delegate {
+            menu.Items.Add(new ToolStripMenuItem(UiText.Get("Журнал диагностики", "Diagnostic log"), null, delegate {
                 try {
                     if (!File.Exists(DiagnosticLog.PathName)) File.WriteAllText(DiagnosticLog.PathName, "");
                     Process.Start("notepad.exe", "\"" + DiagnosticLog.PathName + "\"");
-                } catch (Exception) { tray.Text = "Не удалось открыть журнал диагностики"; }
+                } catch (Exception) { tray.Text = UiText.Get("Не удалось открыть журнал диагностики", "Could not open the diagnostic log"); }
             }));
             menu.Items.Add(new ToolStripMenuItem(AppBranding.Name + " " + AppBranding.Version) { Enabled = false });
-            menu.Items.Add(new ToolStripMenuItem("Выход", null, delegate { ExitThread(); }));
+            menu.Items.Add(new ToolStripMenuItem(UiText.Get("Выход", "Exit"), null, delegate { ExitThread(); }));
             tray = new NotifyIcon();
             tray.Icon = AppBranding.TrayIcon;
             tray.Text = AppBranding.Name;
@@ -570,7 +570,7 @@ namespace RaskladWindows {
             keyboardHook = Native.SetWindowsHookEx(Native.WH_KEYBOARD_LL, keyboardCallback, module, 0);
             mouseHook = Native.SetWindowsHookEx(Native.WH_MOUSE_LL, mouseCallback, module, 0);
             if (keyboardHook == IntPtr.Zero || mouseHook == IntPtr.Zero)
-                throw new InvalidOperationException("Не удалось установить системный обработчик клавиатуры и мыши.");
+                throw new InvalidOperationException(UiText.Get("Не удалось установить системный обработчик клавиатуры и мыши.", "Could not install the keyboard and mouse hooks."));
             DiagnosticLog.Write("runtime.started");
         }
 
@@ -611,7 +611,7 @@ namespace RaskladWindows {
                 excludeItem.Checked = !wasExcluded;
             } catch (Exception ex) {
                 if (wasExcluded) excludedApps.Add(lastApp); else excludedApps.Remove(lastApp);
-                tray.Text = "Ошибка сохранения исключения: " + ex.GetType().Name;
+                tray.Text = UiText.Get("Ошибка сохранения исключения: ", "Exclusion save error: ") + ex.GetType().Name;
             }
         }
 
@@ -669,7 +669,7 @@ namespace RaskladWindows {
                     "fn=" + (fnEnabled ? "1" : "0")
                 }, Encoding.UTF8);
             } catch (Exception ex) {
-                tray.Text = "Ошибка сохранения настроек: " + ex.GetType().Name;
+                tray.Text = UiText.Get("Ошибка сохранения настроек: ", "Could not save settings: ") + ex.GetType().Name;
             }
         }
 
@@ -683,7 +683,7 @@ namespace RaskladWindows {
                 customWordItem.Checked = !wasAdded;
             } catch (Exception ex) {
                 if (wasAdded) customWords.Add(key); else customWords.Remove(key);
-                tray.Text = "Ошибка сохранения слова: " + ex.GetType().Name;
+                tray.Text = UiText.Get("Ошибка сохранения слова: ", "Could not save the word: ") + ex.GetType().Name;
             }
         }
 
@@ -1126,7 +1126,7 @@ namespace RaskladWindows {
             } catch (Exception ex) {
                 if (Program.TestMode) Console.WriteLine(ex);
                 DiagnosticLog.Write("error.dictionary");
-                tray.Text = "Ошибка словаря: " + ex.GetType().Name;
+                tray.Text = UiText.Get("Ошибка словаря: ", "Dictionary error: ") + ex.GetType().Name;
             } finally {
                 if (!delimiterSent && Native.GetForegroundWindow() == item.foreground &&
                     (item.focus == IntPtr.Zero || FocusedWindow(item.foreground) == item.focus))
@@ -1180,7 +1180,7 @@ namespace RaskladWindows {
                         if (added) {
                             try { if (!Program.TestMode) SaveCustomWords(customWordsPath, customWords); }
                             catch (Exception ex) { customWords.Remove(key); added = false;
-                                tray.Text = "Ошибка сохранения слова: " + ex.GetType().Name; }
+                                tray.Text = UiText.Get("Ошибка сохранения слова: ", "Could not save the word: ") + ex.GetType().Name; }
                         }
                     }
                     DiagnosticLog.Write(added ? "undo.learned_after_repeat" : "undo.restored");
@@ -1190,7 +1190,7 @@ namespace RaskladWindows {
                         if (recentTyped.Length > 0 && recentTyped[recentTyped.Length - 1] == item.converted[0])
                             recentTyped.Insert(recentTyped.Length - 1, ' ');
                     }
-                    NotifyChange(item.original, added ? "добавлено в исключения" : "отмена замены", false, item.fieldBounds, item.caretPoint);
+                    NotifyChange(item.original, added ? UiText.Get("добавлено в исключения", "added to exceptions") : UiText.Get("отмена замены", "correction undone"), false, item.fieldBounds, item.caretPoint);
                 }
             } finally {
                 List<Native.Input> replay = new List<Native.Input>(queuedKeys);
@@ -1223,7 +1223,7 @@ namespace RaskladWindows {
             } catch (Exception ex) {
                 if (Program.TestMode) Console.WriteLine(ex);
                 DiagnosticLog.Write("error.manual_correction");
-                tray.Text = "Ошибка переключения: " + ex.GetType().Name;
+                tray.Text = UiText.Get("Ошибка переключения: ", "Layout conversion error: ") + ex.GetType().Name;
             } finally {
                 List<Native.Input> replay = new List<Native.Input>(queuedKeys);
                 queuedKeys.Clear();
@@ -1365,7 +1365,7 @@ namespace RaskladWindows {
                             IntPtr ignored;
                             Native.SendMessageTimeout(window, Native.WM_INPUTLANGCHANGEREQUEST, IntPtr.Zero, record.sourceLayout, 2, 150, out ignored);
                             undo = ReverseCorrection(record, previousLayout);
-                            NotifyChange(record.original, "отмена замены", false, record.fieldBounds, record.caretPoint);
+                            NotifyChange(record.original, UiText.Get("отмена замены", "correction undone"), false, record.fieldBounds, record.caretPoint);
                         }
                     } else { delegated = true; ProcessUndo(); }
                 } else if (manual != null) {
@@ -1374,7 +1374,7 @@ namespace RaskladWindows {
             } catch (Exception ex) {
                 if (Program.TestMode) Console.WriteLine(ex);
                 DiagnosticLog.Write("error.selection");
-                tray.Text = "Ошибка выделения: " + ex.GetType().Name;
+                tray.Text = UiText.Get("Ошибка выделения: ", "Selection error: ") + ex.GetType().Name;
             } finally {
                 if (!delegated) {
                     manual = null;
@@ -2200,6 +2200,11 @@ namespace RaskladWindows {
 
         [STAThread] static int Main(string[] args) {
             try {
+                if (args.Length == 1 && (args[0] == "--menu-test-ru" || args[0] == "--menu-test-en" || args[0] == "--menu-test-fallback")) {
+                    System.Globalization.CultureInfo.CurrentUICulture = new System.Globalization.CultureInfo(
+                        args[0] == "--menu-test-ru" ? "ru-RU" : args[0] == "--menu-test-en" ? "en-US" : "de-DE");
+                    return TrayMenuTests.Run();
+                }
                 if (args.Length == 1 && args[0] == "--dpi-test") return UiDpiChecks.Run();
                 if (args.Length == 1 && args[0] == "--copilot-test") return CopilotChecks.Run();
                 if (args.Length == 1 && args[0] == "--fn-test") return FnKeyChecks.Run();
@@ -2219,14 +2224,14 @@ namespace RaskladWindows {
                 if (args.Length == 1 && args[0] == "--integration-test-leading") return IntegrationTest(52);
                 if (args.Length == 1 && args[0] == "--integration-test-apostrophe") return IntegrationTest(56, 6);
                 if (Process.GetProcessesByName("punto").Length > 0) {
-                    MessageBox.Show("Закройте Punto Switcher через его значок в области уведомлений, затем запустите Rasklad.", AppBranding.Name, MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    MessageBox.Show(UiText.Get("Закройте Punto Switcher через его значок в области уведомлений, затем запустите Rasklad.", "Close Punto Switcher from its tray icon, then start Rasklad."), AppBranding.Name, MessageBoxButtons.OK, MessageBoxIcon.Information);
                     return 2;
                 }
                 bool firstInstance;
                 // Keep the previous mutex ID to prevent older copies from running alongside Rasklad.
                 using (Mutex mutex = new Mutex(false, "Local\\PuntoWinSpeller", out firstInstance)) {
                     if (!firstInstance) {
-                        MessageBox.Show("Rasklad уже запущен.", AppBranding.Name, MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        MessageBox.Show(UiText.Get("Rasklad уже запущен.", "Rasklad is already running."), AppBranding.Name, MessageBoxButtons.OK, MessageBoxIcon.Information);
                         return 3;
                     }
                     Application.EnableVisualStyles();

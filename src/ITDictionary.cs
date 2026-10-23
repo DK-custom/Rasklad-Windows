@@ -113,11 +113,12 @@ namespace RaskladWindows {
         private readonly ITDictionary dictionary;
         public ITDictionaryWindow(ITDictionary dictionary) {
             this.dictionary = dictionary;
-            Text = "Rasklad — IT-словарь";
+            Text = UiText.Get("Rasklad — IT-словарь", "Rasklad — IT dictionary");
             Icon = AppBranding.WindowIcon;
             Size = new Size(820, 560); MinimumSize = new Size(560, 350);
             StartPosition = FormStartPosition.CenterScreen;
             query.Dock = DockStyle.Top;
+            query.AccessibleName = UiText.Get("Найти термин", "Find a term");
             query.Font = new Font(SystemFonts.MessageBoxFont.FontFamily, 12);
             SplitContainer split = new SplitContainer(); split.Dock = DockStyle.Fill;
             results.Dock = DockStyle.Fill; results.HorizontalScrollbar = true;
@@ -125,7 +126,7 @@ namespace RaskladWindows {
             article.Font = new Font(SystemFonts.MessageBoxFont.FontFamily, 11);
             split.Panel1.Controls.Add(results); split.Panel2.Controls.Add(article);
             LinkLabel source = new LinkLabel(); source.Dock = DockStyle.Bottom; source.Height = 32;
-            source.Text = "FOLDOC © Denis Howe • GNU FDL 1.1+ — источник и лицензия";
+            source.Text = UiText.Get("FOLDOC © Denis Howe • GNU FDL 1.1+ — источник и лицензия", "FOLDOC © Denis Howe • GNU FDL 1.1+ — source and license");
             source.LinkClicked += delegate { query.Text = "GNU Free Documentation License"; };
             Controls.Add(split); Controls.Add(query); Controls.Add(source);
             query.TextChanged += delegate { RefreshResults(); };
@@ -139,14 +140,15 @@ namespace RaskladWindows {
             foreach (string name in dictionary.Search(query.Text, 200)) results.Items.Add(name);
             results.EndUpdate();
             if (results.Items.Count > 0) results.SelectedIndex = 0;
-            else article.Text = "Термин не найден. Попробуйте другое написание или начало слова.";
+            else article.Text = UiText.Get("Термин не найден. Попробуйте другое написание или начало слова.", "Term not found. Try a different spelling or a word prefix.");
         }
         private void ShowArticle() {
             ITEntry entry = dictionary.Find(results.SelectedItem as string);
             if (entry != null) article.Text = entry.Head + "\n\n" + entry.Body + "\n\n" +
-                (entry.Language == "en" ? "The Free On-line Dictionary of Computing — http://foldoc.org/\nEditor Denis Howe. GNU FDL 1.1+." : "Русские IT-термины — Rasklad, DK-custom. MIT.");
+                (entry.Language == "en" ? "The Free On-line Dictionary of Computing — http://foldoc.org/\nEditor Denis Howe. GNU FDL 1.1+." : UiText.Get("Русские IT-термины — Rasklad, DK-custom. MIT.", "Russian IT terms — Rasklad, DK-custom. MIT."));
         }
         internal bool ArticleVisibleForTest { get { return article.Text.Length > 50 && results.Items.Count > 0; } }
+        internal string StatusForTest { get { return article.Text; } }
     }
 
     static class ITDictionaryTests {

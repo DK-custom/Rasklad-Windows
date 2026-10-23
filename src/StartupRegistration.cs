@@ -50,7 +50,7 @@ namespace RaskladWindows {
                 type.InvokeMember("Save", BindingFlags.InvokeMethod, null, link, null);
                 using (RegistryKey approval = Registry.CurrentUser.OpenSubKey(ApprovalKey, true))
                     if (approval != null) approval.DeleteValue(Path.GetFileName(shortcutPath), false);
-                if (!Enabled) throw new IOException("The startup shortcut could not be enabled.");
+                if (!Enabled) throw new IOException(UiText.Get("Не удалось включить ярлык автозагрузки.", "The startup shortcut could not be enabled."));
             } finally {
                 if (link != null) Marshal.FinalReleaseComObject(link);
                 if (shell != null) Marshal.FinalReleaseComObject(shell);

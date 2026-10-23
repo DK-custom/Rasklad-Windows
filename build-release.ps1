@@ -34,7 +34,7 @@ if ($SigningCertificateThumbprint) {
     Export-Certificate -Cert $certificate -FilePath $publicCertificate -Type CERT | Out-Null
     Copy-Item -LiteralPath $publicCertificate -Destination $stage
 }
-foreach ($file in @('README.md', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'CHANGELOG.md')) {
+foreach ($file in @('README.md', 'README.ru.md', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'CHANGELOG.md')) {
     Copy-Item -LiteralPath (Join-Path $root $file) -Destination $stage
 }
 Copy-Item -LiteralPath (Join-Path $root 'assets\Rasklad.ico') -Destination $stage
@@ -66,7 +66,7 @@ New-Item -ItemType Directory -Path $sourceStage -Force | Out-Null
 foreach ($folder in @('src', 'assets', 'dictionaries', 'installer', '.github', 'docs', 'certificates')) {
     Copy-Item -LiteralPath (Join-Path $root $folder) -Destination $sourceStage -Recurse
 }
-foreach ($file in @('README.md', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'RELEASING.md', 'CHANGELOG.md', '.gitignore',
+foreach ($file in @('README.md', 'README.ru.md', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'RELEASING.md', 'CHANGELOG.md', '.gitignore',
     'build.ps1', 'build-release.ps1', 'make-icon.ps1', 'sign-file.ps1')) {
     Copy-Item -LiteralPath (Join-Path $root $file) -Destination $sourceStage
 }

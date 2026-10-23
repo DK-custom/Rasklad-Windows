@@ -1,94 +1,104 @@
-# Rasklad для Windows
+# Rasklad for Windows — Russian/English keyboard layout switcher
 
-Переключение русской и английской раскладки, исправление опечаток и регистра. Работает локально со словарями Windows, без сети.
+**English** · [Русский](README.ru.md)
 
-Windows-версия проекта [Rasklad для macOS](https://github.com/DK-custom/Rasklad). Реализация для Windows самостоятельная; версии выпускаются отдельно.
+A free, open-source **Punto Switcher alternative for Windows 10/11**. Rasklad automatically switches the Russian and English keyboard layouts, fixes text typed in the wrong layout, corrects small typos and accidental Caps Lock, and works offline with Windows spelling dictionaries.
 
-## Возможности
+**[Download the latest Windows installer or portable ZIP](https://github.com/DK-custom/Rasklad-Windows/releases/latest)**
 
-- Автоматическая замена раскладки после завершения слова: `ghbdtn` → `привет`.
-- Исправление опечаток в правильной и неправильной раскладке.
-- Удаление одного лишнего пробела перед `, . ! ? : ; ) » ”` после буквы или цифры: `слово ,` → `слово,`. Два пробела, открывающие скобки и тире сохраняются. Работает с включённым исправлением опечаток и общей защитой кода/приложений; Copilot возвращает удалённый пробел, повторное нажатие не преобразует знак.
-- Обработка смешанных слов: `cvj;ешь` → `сможешь`.
-- Pause/Break: преобразование выделенного текста, отмена последней замены или ручная смена раскладки слова. Буфер обмена не используется.
-- Copilot/Pause можно нажимать многократно: последнее слово или выделение переключается туда и обратно. После пробела исправляется последнее набранное слово, пробел сохраняется. История сбрасывается при новом вводе, навигации или щелчке мышью.
-- Одиночная Fn переключает только раскладку RU ↔ EN, сохраняя текст и выделение. Включается в разделе «Клавиши». Поддержан обнаруженный на ThinkPad сигнал `VK=255`, расширенный скан-код `E0 63`; клавиатуры, не передающие Fn в Windows, этим способом не поддерживаются. Сочетания Fn+F1 и другие клавиши не назначаются заново.
-- Личный словарь, исключения приложений, защита редакторов кода и терминалов.
-- Компактная подсказка над текстовой кареткой, светлая и тёмная темы.
-- Меню значка с разделами «Правка», «Клавиши», «Слова» и текущей версией; основные пункты 10 pt, тема Windows.
-- Пункт «Запускать при входе в Windows» включает и отключает автозагрузку текущей копии через ярлык пользователя (тот же механизм, что у установщика). Галочка обновляется при открытии меню; настройки программы отдельно её не дублируют.
-- Офлайн IT-словарь: FOLDOC и русские IT-термины.
+The Windows application is developed separately from [Rasklad for macOS](https://github.com/DK-custom/Rasklad-MacOS). Releases and platform-specific shortcuts are independent.
 
-Приложение не добавляет подчёркивание ошибок в произвольные редакторы. Уже имеющееся подчёркивание обеспечивает сам редактор.
+## Features
 
-## Установка
+- **Automatic RU ↔ EN layout correction:** `ghbdtn` → `привет` after a word boundary. Short and ambiguous words use additional language rules.
+- **Typo and case correction**, including mixed-layout words such as `cvj;ешь` → `сможешь`.
+- **Copilot or Pause/Break:** convert selected text, manually convert a word, or undo the last correction. Repeated presses switch the same word or selection back and forth, including immediately after a space. The clipboard is not used.
+- **Fn layout switching:** a single Fn press switches RU ↔ EN without changing existing text. Requires a compatible keyboard that reports the supported standalone ThinkPad Fn event (`VK=255`, extended scan code `E0 63`). Fn combinations keep their original functions.
+- **Punctuation spacing:** `word ,` → `word,`. Copilot restores the removed space once. Double spaces, opening brackets and dashes are preserved.
+- **Code and password protection:** recognized password fields, excluded applications, terminals, code editors and Markdown code are skipped.
+- **Personal dictionary and application exceptions.** Repeated undo/redo of the same correction does not train the dictionary.
+- **English and Russian interface**, selected from the Windows display language at startup. Other display languages use English. The menu language is independent of the active keyboard layout.
+- **Caret-anchored hints**, light/dark themes, rounded tray menu sections and a 10 pt menu font.
+- **Start with Windows** toggle in the tray menu, compatible with the installer's per-user startup shortcut.
+- **Offline IT dictionary:** FOLDOC (~15,000 English terms) and Russian IT terms.
 
-Требуются Windows 10/11, поддержка x64, .NET Framework 4.8 или новее и установленные средства правописания русского и английского языков (`ru-RU`, `en-US`).
+Typed text is not sent anywhere or written to the diagnostic log. Rasklad does not add spelling underlines to arbitrary applications; existing underlines belong to the editor itself.
 
-1. Запустите `Rasklad-1.0.31-windows-x64-Setup.exe`.
-2. Выберите автозагрузку и, при необходимости, ярлык на рабочем столе.
-3. Запустите Rasklad. Настройки открываются правой кнопкой мыши по значку в трее.
+## Requirements
 
-По умолчанию устанавливается в `%LOCALAPPDATA%\Programs\Rasklad`, без прав администратора. Установщик не отключает Punto Switcher и другие программы: закройте их перед использованием Rasklad, чтобы обработчики ввода не конфликтовали.
+- Windows 10 (build 18362+) or Windows 11, x64 compatible.
+- .NET Framework 4.8 or newer.
+- Windows Russian (`ru-RU`) and English (`en-US`) spelling tools installed.
 
-Portable-вариант: распакуйте ZIP в доступную для записи папку и запустите `Rasklad.exe`. При переносе на другой компьютер переносите всю папку.
+## Install
 
-### Обновление и удаление
+1. Download `Rasklad-1.0.32-windows-x64-Setup.exe` from [Releases](https://github.com/DK-custom/Rasklad-Windows/releases/latest).
+2. Choose startup and desktop shortcuts if needed. Installation is per-user, without administrator rights, under `%LOCALAPPDATA%\Programs\Rasklad`.
+3. Start Rasklad and right-click its tray icon. Enable **Use the Copilot key** or **Fn — switch RU / EN** under **Keys** if supported by your keyboard.
 
-Перед обновлением выйдите из Rasklad через меню значка. Установите новую версию в ту же папку. Настройки и личный словарь не входят в пакет и не перезаписываются.
+Close Punto Switcher or other keyboard conversion utilities before using Rasklad to avoid competing input hooks.
 
-Удаление доступно через «Установленные приложения» Windows. Созданные пользователем файлы сохраняются в папке приложения. При необходимости удалите их самостоятельно после удаления программы.
+**Portable:** extract the ZIP into a writable folder and run `Rasklad.exe`. Keep the entire folder when moving it.
 
-### Copilot
+### Updates and uninstalling
 
-Встроенная горячая клавиша — **Pause/Break**. Клавишу Copilot можно сделать такой же: меню значка → «Клавиша Copilot как Pause/Break (эксперимент)», по умолчанию выключено. Rasklad перехватывает левые Win+Shift+F23 (так Copilot посылает большинство клавиатур): Copilot и меню «Пуск» не открываются, действие Pause выполняется после отпускания клавиши. Проверено на физической клавише Copilot на ThinkPad; код клавиши на других моделях может отличаться. На других клавиатурах код может отличаться — тогда подойдёт пример для AutoHotkey v2 в [docs/copilot.ahk](docs/copilot.ahk). AutoHotkey и задания планировщика установщик не устанавливает и не изменяет.
+Exit Rasklad before updating. The installer keeps settings and personal dictionary files during upgrades and uninstalling. An older copy in a custom folder is not migrated automatically.
 
-## Данные и ограничения
+Files beside `Rasklad.exe`:
 
-Рядом с EXE сохраняются `Rasklad-settings.txt`, `Rasklad-words.txt`, необязательные `Rasklad-exclusions.txt` и `Rasklad-replacements.txt`. Для переноса со старой копии сначала закройте её, затем скопируйте эти файлы в новую папку.
+- `Rasklad-settings.txt` — settings;
+- `Rasklad-words.txt` — personal words;
+- `Rasklad-exclusions.txt` — excluded applications;
+- `Rasklad-replacements.txt` — optional custom replacement rules;
+- `Rasklad-diagnostics.log` — diagnostic event metadata, without typed text.
 
-Диагностический журнал содержит время и служебные причины; набранный текст и содержимое выделения в него не записываются. Слова, добавленные пользователем или выученные после повторной отмены, сохраняются в личном словаре.
+### Signing
 
-Поля пароля и окна с более высокими правами пропускаются. Некоторые редакторы не предоставляют надёжные сведения о каретке или выделении. Неоднозначные короткие слова могут требовать ручной коррекции. Масштаб интерфейса определяется при запуске; разные DPI на нескольких мониторах отдельно не проверены.
+Release installers and executables are signed with the **self-signed** `Rasklad (DK-custom)` SHA-256 certificate. It is not a trusted-publisher certificate: Windows may display a warning. The public certificate is included as `Rasklad-signing.cer`; the installer does not modify trust stores. Verify downloads with `SHA256SUMS.txt`. GitHub Actions builds without the private key are unsigned.
 
-## Сборка
+## Shortcuts and limitations
 
-Приложение собирается встроенным компилятором .NET Framework, без NuGet и без дополнительного .NET SDK:
+Copilot normally sends left Win+Shift+F23. The built-in handler suppresses that chord and the Start menu; the physical key has been tested on a ThinkPad. Other keyboards may report different codes. The optional [AutoHotkey example](docs/copilot.ahk) is provided for other setups, but is not installed or configured automatically.
+
+Fn support is hardware-specific. Custom password controls that do not expose their password state may not be recognized. Some editors do not expose a reliable caret or selection. Ambiguous short words may need manual correction. Mixed-DPI multi-monitor setups have not been verified separately.
+
+## Build
+
+Uses the Windows .NET Framework compiler, without NuGet or an additional .NET SDK:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1
 ```
 
-Результат — `build\Rasklad.exe`. Для пересоздания значков выполните `make-icon.ps1`, затем `make-icon.ps1 -Tray`.
+Output: `build\Rasklad.exe`. To regenerate icons, use `make-icon.ps1` and `make-icon.ps1 -Tray`.
 
-Для сборки установщика требуется [Inno Setup 6.7.3](https://jrsoftware.org/isdl.php) или совместимая версия:
+Installer packages require [Inno Setup 6.7.3](https://jrsoftware.org/isdl.php) or a compatible version:
 
 ```powershell
 .\build-release.ps1 -IsccPath 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
 ```
 
-Результат в `dist`: установщик, portable ZIP, исходники, SHA-256. Порядок проверки и выпуска: [RELEASING.md](RELEASING.md).
+The release script creates the installer, portable ZIP, source ZIP and SHA-256 manifest in `dist`. Pass `-SigningCertificateThumbprint` to sign with a code-signing certificate in the current user's store. Never commit private keys. See [RELEASING.md](RELEASING.md) for the release procedure.
 
-### Подпись тестового дистрибутива
+### Verification
 
-Текущий локальный пакет подписан самоподписанным сертификатом `Rasklad (DK-custom)` с SHA-256. Это подтверждает подпись данным ключом, но не даёт автоматического доверия Windows. Открытый сертификат — `Rasklad-signing.cer` в дистрибутиве. Установщик не добавляет его в доверенные хранилища.
+Run UI checks separately from the working copy, without keyboard or mouse input:
 
-Для повторной подписанной сборки передайте `-SigningCertificateThumbprint` в `build-release.ps1`. Закрытый ключ должен находиться в личном хранилище текущего пользователя Windows. CI без ключа выпускает неподписанный пакет. Файлы с закрытыми ключами не входят в репозиторий и архивы.
+```powershell
+.\build\Rasklad.exe --self-test
+.\build\Rasklad.exe --menu-test-ru
+.\build\Rasklad.exe --menu-test-en
+.\build\Rasklad.exe --menu-test-fallback
+.\build\Rasklad.exe --copilot-test
+.\build\Rasklad.exe --fn-test
+.\build\Rasklad.exe --punctuation-test
+.\build\Rasklad.exe --startup-test
+```
 
-### Проверка Copilot на Windows
+Language checks use simulated UI cultures without changing the Windows display language. Startup checks use temporary shortcuts and preserve the real startup registration. Fn handler checks replay the observed event into the handler; physical hardware is tested separately.
 
-`build\Rasklad.exe --startup-test` проверяет создание/удаление временного ярлыка, правильный EXE и восстановление после запрета автозагрузки Windows. Проверка меню использует отдельный временный ярлык; реальная автозагрузка пользователя не меняется.
+## License
 
-`build\Rasklad.exe --punctuation-test` проверяет правило пробелов, RU/EN, отмену и повторный Copilot, продолжение ввода в очереди, выделение/смену поля, исключения, Markdown-код и пароль. Вся таблица знаков (включая `» ”`) проверяется как правило; ввод физическими VK проверяется для знаков, доступных в обычных RU/EN раскладках. Запускать отдельно от рабочей копии без ввода пользователя.
+Rasklad code and Russian IT terms: [MIT](LICENSE), Copyright (c) 2026 DK.
 
-`build\Rasklad.exe --fn-test` проверяет обработку записанного события Fn: шесть смен RU/EN, отсутствие смены до отпускания, сохранность текста/выделения, отмену сочетания и смены фокуса, выключенную опцию и другой скан-код. Это тест обработчика; физическую клавишу и её сочетания проверяют отдельно.
-
-`build\Rasklad.exe --copilot-test` проверяет повторную замену выделения при пяти вариантах Win+Shift+F23, многократную смену слова до и сразу после пробела, короткое слово, выделение UIA, отмену/повтор после автоисправления и защиту паролей. Отдельно проверяется отсутствие действия у Ctrl. Тест наблюдает события активации «Пуска» и проверяет сохранение фокуса; запускать отдельно от рабочей копии, без AutoHotkey и без ввода мышью/клавиатурой. Это синтетический тест, физическую клавишу проверяют отдельно.
-
-Диагностические коды `copilot.captured` и `copilot.pause_sent` подтверждают захват сочетания и отправку Pause; текст ввода не записывается.
-
-## Лицензии
-
-Код Rasklad и русские термины — [MIT](LICENSE), Copyright (c) 2026 DK.
-
-The Free On-line Dictionary of Computing, [http://foldoc.org/](http://foldoc.org/), Editor Denis Howe, Copyright 1985 Denis Howe — GNU FDL 1.1 или новее, без неизменяемых разделов и текстов обложек. Неизменённый исходник словаря и полный текст лицензии включены в дистрибутив. См. [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+The Free On-line Dictionary of Computing, [FOLDOC](https://foldoc.org/), Editor Denis Howe, Copyright 1985 Denis Howe: GNU FDL 1.1 or later, with no invariant sections or cover texts. The unchanged dictionary source and license are included. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

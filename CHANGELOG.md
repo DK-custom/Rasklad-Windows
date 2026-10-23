@@ -1,4 +1,14 @@
-# Rasklad 1.0.31 — Windows x64
+# Rasklad 1.0.32 — Windows x64
+
+- English and Russian UI follows the Windows display language at startup; other languages fall back to English. Menu commands, dictionary window, hints and application messages are localized.
+- Русский и английский интерфейс по языку Windows: меню, окно словаря, подсказки и сообщения. Для других языков используется английский.
+- English README and Russian README.ru.md, with direct download links and descriptions of the Windows keyboard layout switcher / аналога Punto Switcher.
+- Both documentation languages are included in installer, portable and source packages.
+- UI tests cover ru-RU, en-US and fallback cultures in light and dark themes.
+
+Signed with the self-signed Rasklad (DK-custom) certificate. Public certificate and SHA256SUMS.txt are included; Windows trust stores are not changed.
+
+## Previous release: 1.0.31
 
 - Встроенная обработка Copilot без AutoHotkey; предотвращено открытие «Пуска».
 - Многократная смена слова/выделения и исправление предыдущего слова после пробела по Copilot/Pause.

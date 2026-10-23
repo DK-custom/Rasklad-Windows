@@ -10,7 +10,7 @@ using System.Windows.Forms;
 [assembly: AssemblyProduct("Rasklad")]
 [assembly: AssemblyDescription("Русско-английская раскладка и правописание Windows")]
 [assembly: AssemblyVersion("1.0.0.0")]
-[assembly: AssemblyFileVersion("1.0.31.0")]
+[assembly: AssemblyFileVersion("1.0.32.0")]
 
 namespace RaskladWindows {
     static class AppBranding {
@@ -26,7 +26,7 @@ namespace RaskladWindows {
         internal static readonly Icon WindowIcon = LoadIcon(SystemInformation.IconSize);
         private static Icon LoadIcon(Size size, string resource = "App.Icon") {
             using (Stream stream = typeof(AppBranding).Assembly.GetManifestResourceStream(resource)) {
-                if (stream == null) throw new InvalidOperationException("Значок Rasklad не найден в приложении.");
+                if (stream == null) throw new InvalidOperationException(UiText.Get("Значок Rasklad не найден в приложении.", "The Rasklad icon is missing from the application."));
                 return new Icon(stream, size);
             }
         }

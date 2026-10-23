@@ -12,6 +12,9 @@
    .\build\Rasklad.exe --self-test
    .\build\Rasklad.exe --dpi-test
    .\build\Rasklad.exe --menu-test
+   .\build\Rasklad.exe --menu-test-ru
+   .\build\Rasklad.exe --menu-test-en
+   .\build\Rasklad.exe --menu-test-fallback
    .\build\Rasklad.exe --hint-test
    .\build\Rasklad.exe --integration-test-apostrophe
    .\build\Rasklad.exe --copilot-test
@@ -39,16 +42,16 @@
 
 ## GitHub
 
-Workflow `build.yml` собирает артефакты, но не публикует релизы. Репозиторий `DK-custom/Rasklad-Windows` создан приватным, `main` отправлен. Публикация — отдельное решение владельца; релиз сначала создаётся черновиком:
+Workflow `build.yml` собирает артефакты, но не публикует релизы. Репозиторий `DK-custom/Rasklad-Windows` публикуется открыто по решению владельца, `main` отправлен. Публикация — отдельное решение владельца; релиз сначала создаётся черновиком:
 
 ```powershell
-# Репозиторий остаётся приватным по решению владельца.
-gh release create v1.0.31 --repo DK-custom/Rasklad-Windows --draft --target main `
-  --title 'Rasklad 1.0.31 для Windows' `
-  --notes-file dist/Rasklad-1.0.31-release-notes.md `
-  dist/Rasklad-1.0.31-windows-x64-Setup.exe `
-  dist/Rasklad-1.0.31-windows-x64-portable.zip `
-  dist/Rasklad-1.0.31-source.zip dist/Rasklad-signing.cer dist/SHA256SUMS.txt
+# Публичность репозитория разрешена владельцем.
+gh release create v1.0.32 --repo DK-custom/Rasklad-Windows --draft --target main `
+  --title 'Rasklad 1.0.32 для Windows' `
+  --notes-file dist/Rasklad-1.0.32-release-notes.md `
+  dist/Rasklad-1.0.32-windows-x64-Setup.exe `
+  dist/Rasklad-1.0.32-windows-x64-portable.zip `
+  dist/Rasklad-1.0.32-source.zip dist/Rasklad-signing.cer dist/SHA256SUMS.txt
 ```
 
 `dist` должен быть собран из того же коммита, что отправлен в `main` (`git status` чистый).

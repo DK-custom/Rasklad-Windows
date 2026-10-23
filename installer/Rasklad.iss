@@ -1,5 +1,5 @@
-﻿#ifndef AppVersion
-  #define AppVersion "1.0.31"
+#ifndef AppVersion
+  #define AppVersion "1.0.32"
 #endif
 #ifndef PackageDir
   #error PackageDir is required

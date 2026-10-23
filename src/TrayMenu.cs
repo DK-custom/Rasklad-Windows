@@ -111,7 +111,17 @@ namespace RaskladWindows {
                     Native.ShowWindow(form.Handle, 1);
                     TrayMenu menu = app.MenuForTest;
                     Require(app.BrandingForTest, "tray name/icon mismatch");
-                    Require(menu.Items.Count == 21 && menu.Items[20].Text == "Выход", "menu commands changed");
+                    Require(menu.Items.Count == 21 && menu.Items[20].Text == UiText.Get("Выход", "Exit"), "menu commands changed");
+                    Require(menu.Items[2].Text == UiText.Get("Автопереключение раскладки", "Automatic layout switching"), "wrong UI language");
+                    if (!UiText.Russian)
+                        foreach (ToolStripItem item in menu.Items)
+                            Require(!System.Text.RegularExpressions.Regex.IsMatch(item.Text, "[А-Яа-яЁё]"), "Russian label in English UI: " + item.Text);
+                    using (ITDictionaryWindow dictionary = new ITDictionaryWindow(ITDictionary.Load())) {
+                        Require(dictionary.Text == UiText.Get("Rasklad — IT-словарь", "Rasklad — IT dictionary"), "dictionary title language");
+                        dictionary.SearchFor("raskladfixturemissingterm");
+                        Require(dictionary.StatusForTest == UiText.Get("Термин не найден. Попробуйте другое написание или начало слова.", "Term not found. Try a different spelling or a word prefix."), "dictionary status language");
+                    }
+                    Console.WriteLine("UI culture=" + System.Globalization.CultureInfo.CurrentUICulture.Name + " menu and dictionary PASS");
                     foreach (int header in new[] { 1, 8, 13 }) {
                         Require(menu.Items[header].Tag == TrayMenu.HeaderTag && !menu.Items[header].Enabled, "section header missing at " + header);
                         Require(menu.Items[header - 1] is ToolStripSeparator, "section separator missing at " + header);
