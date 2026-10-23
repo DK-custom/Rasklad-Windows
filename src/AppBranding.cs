@@ -10,11 +10,18 @@ using System.Windows.Forms;
 [assembly: AssemblyProduct("Rasklad")]
 [assembly: AssemblyDescription("Русско-английская раскладка и правописание Windows")]
 [assembly: AssemblyVersion("1.0.0.0")]
-[assembly: AssemblyFileVersion("1.0.30.1")]
+[assembly: AssemblyFileVersion("1.0.31.0")]
 
 namespace RaskladWindows {
     static class AppBranding {
         internal const string Name = "Rasklad";
+        internal static string Version {
+            get {
+                AssemblyFileVersionAttribute file = (AssemblyFileVersionAttribute)Attribute.GetCustomAttribute(
+                    typeof(AppBranding).Assembly, typeof(AssemblyFileVersionAttribute));
+                return file == null ? "?" : file.Version;
+            }
+        }
         internal static readonly Icon TrayIcon = LoadIcon(SystemInformation.SmallIconSize, "Tray.Icon");
         internal static readonly Icon WindowIcon = LoadIcon(SystemInformation.IconSize);
         private static Icon LoadIcon(Size size, string resource = "App.Icon") {

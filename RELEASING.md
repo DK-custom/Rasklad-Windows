@@ -15,6 +15,9 @@
    .\build\Rasklad.exe --hint-test
    .\build\Rasklad.exe --integration-test-apostrophe
    .\build\Rasklad.exe --copilot-test
+   .\build\Rasklad.exe --fn-test
+   .\build\Rasklad.exe --punctuation-test
+   .\build\Rasklad.exe --startup-test
    ```
 
    Проверять exit code, а не только вывод. UI-тесты требуют интерактивного рабочего стола; фокус не должен перехватываться другими окнами. Не запускать вместе с рабочей копией: обе используют клавиатурные hooks.
@@ -40,12 +43,12 @@ Workflow `build.yml` собирает артефакты, но не публик
 
 ```powershell
 # Репозиторий остаётся приватным по решению владельца.
-gh release create v1.0.30 --repo DK-custom/Rasklad-Windows --draft --target main `
-  --title 'Rasklad 1.0.30 для Windows' `
-  --notes-file dist/Rasklad-1.0.30-release-notes.md `
-  dist/Rasklad-1.0.30-windows-x64-Setup.exe `
-  dist/Rasklad-1.0.30-windows-x64-portable.zip `
-  dist/Rasklad-1.0.30-source.zip dist/Rasklad-signing.cer dist/SHA256SUMS.txt
+gh release create v1.0.31 --repo DK-custom/Rasklad-Windows --draft --target main `
+  --title 'Rasklad 1.0.31 для Windows' `
+  --notes-file dist/Rasklad-1.0.31-release-notes.md `
+  dist/Rasklad-1.0.31-windows-x64-Setup.exe `
+  dist/Rasklad-1.0.31-windows-x64-portable.zip `
+  dist/Rasklad-1.0.31-source.zip dist/Rasklad-signing.cer dist/SHA256SUMS.txt
 ```
 
 `dist` должен быть собран из того же коммита, что отправлен в `main` (`git status` чистый).

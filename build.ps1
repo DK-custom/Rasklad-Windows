@@ -12,7 +12,7 @@ $arguments = @('/nologo', '/optimize+', '/target:winexe', '/platform:x64',
     "/reference:$wpf\WindowsBase.dll", "/reference:$wpf\UIAutomationClient.dll", "/reference:$wpf\UIAutomationTypes.dll",
     "/resource:$PSScriptRoot\dictionaries\FOLDOC.txt,IT.FOLDOC", "/resource:$PSScriptRoot\dictionaries\ru_terms.tsv,IT.Russian",
     "/resource:$PSScriptRoot\dictionaries\NOTICE.txt,IT.Notice", "/resource:$PSScriptRoot\dictionaries\Rasklad-LICENSE.txt,IT.MIT")
-foreach ($name in @('RaskladWindows', 'ITDictionary', 'RuntimeChecks', 'RuntimeSupport', 'ReplacementRules', 'HintDesign', 'TrayMenu', 'AppBranding', 'UiDpiChecks', 'CopilotChecks')) {
+foreach ($name in @('RaskladWindows', 'ITDictionary', 'RuntimeChecks', 'RuntimeSupport', 'ReplacementRules', 'HintDesign', 'TrayMenu', 'AppBranding', 'UiDpiChecks', 'CopilotChecks', 'FnKeyChecks', 'PunctuationChecks', 'StartupRegistration')) {
     $arguments += Join-Path $PSScriptRoot "src\$name.cs"
 }
 & $compiler @arguments

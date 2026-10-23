@@ -204,7 +204,7 @@ namespace RaskladWindows {
         public int delimiterVk;
         public char delimiter;
         public IntPtr foreground, focus, sourceLayout;
-        public bool typo, sourceRussian;
+        public bool typo, sourceRussian, punctuation;
         public Rectangle? fieldBounds;
         public Point? caretPoint;
         public int selectionStart = -1;
@@ -433,7 +433,10 @@ namespace RaskladWindows {
         private readonly TrayMenu trayMenu;
         internal TrayMenu MenuForTest { get { return trayMenu; } }
         private readonly SuggestionPopup suggestionPopup = new SuggestionPopup();
-        private readonly ToolStripMenuItem autoItem, typoItem, spellingItem, codeItem, copilotItem, excludeItem, customWordItem;
+        private readonly ToolStripMenuItem autoItem, typoItem, spellingItem, codeItem, copilotItem, fnItem, startupItem, excludeItem, customWordItem;
+        private readonly StartupRegistration startup = new StartupRegistration(
+            Program.TestMode ? Path.Combine(Path.GetTempPath(), "Rasklad-menu-test-" + Guid.NewGuid().ToString("N") + ".lnk") :
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Startup), "Rasklad.lnk"), Application.ExecutablePath);
         private readonly Native.HookProc keyboardCallback, mouseCallback;
         private readonly Control dispatcher;
         private readonly List<KeyStroke> word = new List<KeyStroke>();
@@ -463,6 +466,8 @@ namespace RaskladWindows {
         private int editingRevision;
         private bool autoEnabled = true, typoEnabled = true, spellingEnabled = true, codeProtectionEnabled = true, undoPending;
         private bool copilotEnabled, copilotChord;
+        private bool fnEnabled, fnKeyDown, fnArmed;
+        private IntPtr fnWindow, fnFocus;
         internal bool PopupVisibleForTest { get { return suggestionPopup.Visible; } }
         internal bool PopupFitsForTest { get { return suggestionPopup.FitsForTest; } }
         internal bool PopupNoTaskbarForTest { get { return suggestionPopup.NoTaskbarButtonForTest; } }
@@ -487,30 +492,38 @@ namespace RaskladWindows {
             if (!Program.TestMode) LoadSettings();
 
             TrayMenu menu = new TrayMenu(); trayMenu = menu;
-            autoItem = new ToolStripMenuItem("Автопереключение", null, delegate {
+            autoItem = new ToolStripMenuItem("Автопереключение раскладки", null, delegate {
                 autoEnabled = !autoEnabled; autoItem.Checked = autoEnabled; word.Clear(); SaveSettings(); });
             autoItem.Checked = autoEnabled;
-            typoItem = new ToolStripMenuItem("Автоисправление опечаток", null, delegate {
+            typoItem = new ToolStripMenuItem("Исправлять опечатки", null, delegate {
                 typoEnabled = !typoEnabled; typoItem.Checked = typoEnabled; word.Clear(); SaveSettings(); });
             typoItem.Checked = typoEnabled;
             spellingItem = new ToolStripMenuItem("Всплывающие подсказки", null, delegate {
                 spellingEnabled = !spellingEnabled; spellingItem.Checked = spellingEnabled;
                 if (!spellingEnabled) suggestionPopup.Dismiss(); SaveSettings(); });
             spellingItem.Checked = spellingEnabled;
-            codeItem = new ToolStripMenuItem("Не править в редакторах кода и терминалах", null, delegate {
+            codeItem = new ToolStripMenuItem("Не править код и терминалы", null, delegate {
                 codeProtectionEnabled = !codeProtectionEnabled; codeItem.Checked = codeProtectionEnabled; SaveSettings(); });
             codeItem.Checked = codeProtectionEnabled;
-            copilotItem = new ToolStripMenuItem("Клавиша Copilot как Pause/Break (эксперимент)", null, delegate {
+            copilotItem = new ToolStripMenuItem("Использовать клавишу Copilot", null, delegate {
                 copilotEnabled = !copilotEnabled; copilotItem.Checked = copilotEnabled; copilotChord = false; SaveSettings(); });
             copilotItem.Checked = copilotEnabled;
+            fnItem = new ToolStripMenuItem("Fn — переключать RU / EN", null, delegate {
+                fnEnabled = !fnEnabled; fnItem.Checked = fnEnabled; fnArmed = fnKeyDown = false; SaveSettings(); });
+            fnItem.Checked = fnEnabled;
             excludeItem = new ToolStripMenuItem("Исключить последнее приложение ввода", null, delegate { ToggleExcludedApp(); });
             customWordItem = new ToolStripMenuItem("Добавить последнее незнакомое слово", null, delegate { ToggleCustomWord(); });
+            menu.AddHeader("Правка");
             menu.Items.Add(autoItem);
             menu.Items.Add(typoItem);
             menu.Items.Add(spellingItem);
             menu.Items.Add(codeItem);
-            menu.Items.Add(copilotItem);
             menu.Items.Add(excludeItem);
+            menu.AddHeader("Клавиши");
+            menu.Items.Add(copilotItem);
+            menu.Items.Add(fnItem);
+            menu.Items.Add(new ToolStripMenuItem("Copilot / Pause — смена и отмена") { Enabled = false });
+            menu.AddHeader("Слова");
             menu.Items.Add(customWordItem);
             menu.Items.Add(new ToolStripMenuItem("IT-словарь: найти термин…", null, delegate {
                 if (dictionaryWindow == null || dictionaryWindow.IsDisposed) dictionaryWindow = new ITDictionaryWindow(itDictionary);
@@ -518,19 +531,30 @@ namespace RaskladWindows {
                 dictionaryWindow.SearchFor(lastUnknownWord);
             }));
             menu.Opening += delegate { excludeItem.Enabled = !String.IsNullOrEmpty(lastApp);
-                excludeItem.Text = lastApp == null ? "Исключить последнее приложение ввода" : "Не обрабатывать в " + lastApp;
+                excludeItem.Text = lastApp == null ? "Исключить последнее приложение ввода" : "Не править в «" + lastApp + "»";
                 excludeItem.Checked = lastApp != null && excludedApps.Contains(lastApp);
                 customWordItem.Enabled = lastUnknownWord != null;
                 customWordItem.Text = lastUnknownWord == null ? "Добавить последнее незнакомое слово" :
                     "Считать правильным: " + lastUnknownWord + (lastUnknownRussian ? " (RU)" : " (EN)");
                 customWordItem.Checked = lastUnknownWord != null && customWords.Contains(CustomKey(lastUnknownWord, lastUnknownRussian)); };
             menu.Items.Add(new ToolStripSeparator());
-            menu.Items.Add(new ToolStripMenuItem("Открыть журнал диагностики", null, delegate {
+            startupItem = new ToolStripMenuItem("Запускать при входе в Windows", null, delegate {
+                try { startup.SetEnabled(!startup.Enabled); }
+                catch (Exception ex) {
+                    DiagnosticLog.Write("error.startup_registration");
+                    MessageBox.Show("Не удалось изменить автозагрузку: " + ex.Message, AppBranding.Name, MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+                RefreshStartupItem();
+            });
+            menu.Items.Add(startupItem);
+            menu.Opening += delegate { RefreshStartupItem(); };
+            menu.Items.Add(new ToolStripMenuItem("Журнал диагностики", null, delegate {
                 try {
                     if (!File.Exists(DiagnosticLog.PathName)) File.WriteAllText(DiagnosticLog.PathName, "");
                     Process.Start("notepad.exe", "\"" + DiagnosticLog.PathName + "\"");
                 } catch (Exception) { tray.Text = "Не удалось открыть журнал диагностики"; }
             }));
+            menu.Items.Add(new ToolStripMenuItem(AppBranding.Name + " " + AppBranding.Version) { Enabled = false });
             menu.Items.Add(new ToolStripMenuItem("Выход", null, delegate { ExitThread(); }));
             tray = new NotifyIcon();
             tray.Icon = AppBranding.TrayIcon;
@@ -556,6 +580,10 @@ namespace RaskladWindows {
             try { return Process.GetProcessById((int)processId).ProcessName; }
             catch (ArgumentException) { return null; }
             catch (System.ComponentModel.Win32Exception) { return null; }
+        }
+        private void RefreshStartupItem() {
+            try { startupItem.Checked = startup.Enabled; startupItem.Enabled = true; }
+            catch (Exception) { startupItem.Checked = false; startupItem.Enabled = false; DiagnosticLog.Write("error.startup_status"); }
         }
 
         private static readonly HashSet<string> codeApps = new HashSet<string>(new[] {
@@ -625,6 +653,7 @@ namespace RaskladWindows {
                 if (line == "hints=0") spellingEnabled = false;
                 if (line == "protectCode=0") codeProtectionEnabled = false;
                 if (line == "copilot=1") copilotEnabled = true;
+                if (line == "fn=1") fnEnabled = true;
             }
         }
 
@@ -636,7 +665,8 @@ namespace RaskladWindows {
                     "typos=" + (typoEnabled ? "1" : "0"),
                     "hints=" + (spellingEnabled ? "1" : "0"),
                     "protectCode=" + (codeProtectionEnabled ? "1" : "0"),
-                    "copilot=" + (copilotEnabled ? "1" : "0")
+                    "copilot=" + (copilotEnabled ? "1" : "0"),
+                    "fn=" + (fnEnabled ? "1" : "0")
                 }, Encoding.UTF8);
             } catch (Exception ex) {
                 tray.Text = "Ошибка сохранения настроек: " + ex.GetType().Name;
@@ -689,6 +719,10 @@ namespace RaskladWindows {
             if (c == '\0') return;
             recentTyped.Append(c);
             if (recentTyped.Length > 4000) recentTyped.Remove(0, recentTyped.Length - 4000);
+        }
+        internal static bool SpaceBeforePunctuationForTest(string text, char mark) {
+            return !String.IsNullOrEmpty(text) && text.Length >= 2 && text[text.Length - 1] == ' ' &&
+                Char.IsLetterOrDigit(text[text.Length - 2]) && ",.!?:;)»”".IndexOf(mark) >= 0;
         }
         internal void AddCustomWordForTest(string wordText, bool russianLanguage) {
             customWords.Add(CustomKey(wordText, russianLanguage));
@@ -907,6 +941,57 @@ namespace RaskladWindows {
             return await check;
         }
 
+        private bool IsProtectedCode(IntPtr window, InputContext context) {
+            return codeProtectionEnabled && (IsCodeApp(ApplicationName(window)) || context.CodeField ||
+                InsideMarkdownCodeForTest(recentTyped.ToString()));
+        }
+
+        private async void ProcessPunctuation(IntPtr window, IntPtr focus, int revision, char mark, IntPtr layout) {
+            bool delivered = false;
+            try {
+                InputContext context = await GetInputContextAsync(true);
+                if (revision != editingRevision || Native.GetForegroundWindow() != window || FocusedWindow(window) != focus ||
+                    !InputAccess.Allows(window)) return;
+                bool allowed = typoEnabled && !context.Protected && !IsProtectedCode(window, context) &&
+                    !excludedApps.Contains(ApplicationName(window) ?? "") && String.IsNullOrEmpty(context.SelectionText);
+                int start = -1;
+                InputContext native;
+                if (allowed && TryNativeSelection(focus, out native)) {
+                    string actual = native.Protected ? null : ReadNativeText(focus);
+                    start = native.NativeSelectionStart;
+                    allowed = !native.Protected && String.IsNullOrEmpty(native.SelectionText) && actual != null &&
+                        start >= 2 && start <= actual.Length && SpaceBeforePunctuationForTest(actual.Substring(0, start), mark);
+                }
+                string replacement = mark.ToString();
+                bool replaced = allowed && (start >= 0
+                    ? ReplaceNativeRange(focus, start - 1, " ", replacement)
+                    : ReplaceTypedWord(1, replacement, 0, '\0'));
+                if (replaced) {
+                    delivered = true;
+                    if (recentTyped.Length >= 2 && recentTyped[recentTyped.Length - 2] == ' ')
+                        recentTyped.Remove(recentTyped.Length - 2, 1);
+                    undo = new UndoRecord { original = " " + mark, converted = replacement, punctuation = true,
+                        foreground = window, focus = focus, sourceLayout = layout, selectionStart = start >= 0 ? start - 1 : -1,
+                        fieldBounds = context.FieldBounds, caretPoint = context.CaretPoint };
+                    DiagnosticLog.Write("punctuation.space_removed");
+                    NotifyChange(" " + mark, replacement, true, context.FieldBounds, context.CaretPoint);
+                } else delivered = ReplaceTypedWord(0, replacement, 0, '\0');
+            } catch (Exception ex) {
+                if (Program.TestMode) Console.Error.WriteLine(ex);
+                DiagnosticLog.Write("error.punctuation");
+                if (!delivered && revision == editingRevision && Native.GetForegroundWindow() == window && FocusedWindow(window) == focus)
+                    ReplaceTypedWord(0, mark.ToString(), 0, '\0');
+            } finally {
+                word.Clear(); recent = null; ResetPhrase();
+                List<Native.Input> replay = new List<Native.Input>(queuedKeys);
+                queuedKeys.Clear(); undoPending = false;
+                if (replay.Count > 0) {
+                    foreach (Native.Input input in replay) if (ReplayEditsInput(input)) undo = null;
+                    SendKeys(replay);
+                }
+            }
+        }
+
         private async void ProcessPending() {
             PendingWord item = pending;
             if (item == null) return;
@@ -914,13 +999,10 @@ namespace RaskladWindows {
             try {
                 InputContext context = await GetInputContextAsync();
                 if (context.Protected) DiagnosticLog.Write(context.SkipReason);
-                if (codeProtectionEnabled && (IsCodeApp(ApplicationName(item.foreground)) || context.CodeField ||
-                    InsideMarkdownCodeForTest(recentTyped.ToString()))) DiagnosticLog.Write("skip.code");
+                if (IsProtectedCode(item.foreground, context)) DiagnosticLog.Write("skip.code");
                 if (Native.GetForegroundWindow() != item.foreground ||
                     (item.focus != IntPtr.Zero && FocusedWindow(item.foreground) != item.focus)) DiagnosticLog.Write("skip.focus_changed");
-                if (!context.Protected && InputAccess.Allows(item.foreground) && (!codeProtectionEnabled ||
-                    (!IsCodeApp(ApplicationName(item.foreground)) && !context.CodeField &&
-                    !InsideMarkdownCodeForTest(recentTyped.ToString()))) &&
+                if (!context.Protected && InputAccess.Allows(item.foreground) && !IsProtectedCode(item.foreground, context) &&
                     Native.GetForegroundWindow() == item.foreground &&
                     (item.focus == IntPtr.Zero || FocusedWindow(item.foreground) == item.focus)) {
                     string prescribed;
@@ -1055,15 +1137,28 @@ namespace RaskladWindows {
                 List<Native.Input> replay = new List<Native.Input>(queuedKeys);
                 queuedKeys.Clear();
                 pending = null;
-                if (replay.Count > 0) { recent = null; undo = null; SendKeys(replay); }
+                if (replay.Count > 0) {
+                    foreach (Native.Input input in replay)
+                        if (ReplayEditsInput(input)) { recent = null; undo = null; }
+                    SendKeys(replay);
+                }
                 if (item.delimiterVk != Native.VK_SPACE) ResetPhrase();
                 if (item.delimiterVk == Native.VK_TAB) recentTyped.Clear();
             }
         }
 
+        private static UndoRecord ReverseCorrection(UndoRecord item, IntPtr layout) {
+            return new UndoRecord { original = item.converted, converted = item.original,
+                delimiterVk = item.delimiterVk, delimiter = item.delimiter,
+                foreground = item.foreground, focus = item.focus, sourceLayout = layout,
+                sourceRussian = unchecked((ushort)layout.ToInt64()) == 0x0419,
+                selectionStart = item.selectionStart, fieldBounds = item.fieldBounds, caretPoint = item.caretPoint };
+        }
+
         private void ProcessUndo() {
             UndoRecord item = undo;
             undo = null;
+            IntPtr previousLayout = item == null ? IntPtr.Zero : Native.GetKeyboardLayout(Native.GetWindowThreadProcessId(item.foreground, IntPtr.Zero));
             try {
                 if (item != null && Native.GetForegroundWindow() == item.foreground &&
                     InputAccess.Allows(item.foreground) &&
@@ -1089,6 +1184,12 @@ namespace RaskladWindows {
                         }
                     }
                     DiagnosticLog.Write(added ? "undo.learned_after_repeat" : "undo.restored");
+                    if (!item.punctuation) undo = ReverseCorrection(item, previousLayout);
+                    else {
+                        word.Clear(); recent = null; ResetPhrase();
+                        if (recentTyped.Length > 0 && recentTyped[recentTyped.Length - 1] == item.converted[0])
+                            recentTyped.Insert(recentTyped.Length - 1, ' ');
+                    }
                     NotifyChange(item.original, added ? "добавлено в исключения" : "отмена замены", false, item.fieldBounds, item.caretPoint);
                 }
             } finally {
@@ -1116,7 +1217,8 @@ namespace RaskladWindows {
                     undo = new UndoRecord { original = item.original, converted = item.converted,
                         delimiterVk = item.delimiterVk, delimiter = item.delimiter,
                         foreground = item.foreground, focus = item.focus,
-                        sourceLayout = item.originalLayout, fieldBounds = context.FieldBounds, caretPoint = context.CaretPoint };
+                        sourceLayout = item.originalLayout, sourceRussian = item.sourceRussian,
+                        fieldBounds = context.FieldBounds, caretPoint = context.CaretPoint };
                 }
             } catch (Exception ex) {
                 if (Program.TestMode) Console.WriteLine(ex);
@@ -1126,7 +1228,10 @@ namespace RaskladWindows {
                 List<Native.Input> replay = new List<Native.Input>(queuedKeys);
                 queuedKeys.Clear();
                 undoPending = false;
-                if (replay.Count > 0) { undo = null; SendKeys(replay); }
+                if (replay.Count > 0) {
+                    foreach (Native.Input input in replay) if (ReplayEditsInput(input)) undo = null;
+                    SendKeys(replay);
+                }
             }
         }
 
@@ -1232,6 +1337,7 @@ namespace RaskladWindows {
                     (undo.focus == IntPtr.Zero || undo.focus == focus)) {
                     if (undo.selectionStart == -2) {
                         UndoRecord record = undo; undo = null;
+                        IntPtr previousLayout = Native.GetKeyboardLayout(Native.GetWindowThreadProcessId(window, IntPtr.Zero));
                         System.Threading.CancellationTokenSource selectionCancellation = new System.Threading.CancellationTokenSource();
                         Task<bool> select = Task.Run(() => {
                             try {
@@ -1258,6 +1364,7 @@ namespace RaskladWindows {
                             ReplaceTypedWord(0, record.original, 0, '\0')) {
                             IntPtr ignored;
                             Native.SendMessageTimeout(window, Native.WM_INPUTLANGCHANGEREQUEST, IntPtr.Zero, record.sourceLayout, 2, 150, out ignored);
+                            undo = ReverseCorrection(record, previousLayout);
                             NotifyChange(record.original, "отмена замены", false, record.fieldBounds, record.caretPoint);
                         }
                     } else { delegated = true; ProcessUndo(); }
@@ -1275,8 +1382,7 @@ namespace RaskladWindows {
                     queuedKeys.Clear(); undoPending = false;
                     if (replay.Count > 0) {
                         foreach (Native.Input input in replay)
-                            if ((input.data.key.flags & Native.KEYEVENTF_KEYUP) == 0 &&
-                                !IsModifierKey(input.data.key.vk) && input.data.key.vk != Native.VK_F23) undo = null;
+                            if (ReplayEditsInput(input)) undo = null;
                         SendKeys(replay);
                     }
                 }
@@ -1312,6 +1418,12 @@ namespace RaskladWindows {
                 vk == 160 || vk == 161 || vk == 162 || vk == 163 || vk == 164 || vk == 165;
         }
 
+        private static bool ReplayEditsInput(Native.Input input) {
+            int vk = input.data.key.vk;
+            return (input.data.key.flags & Native.KEYEVENTF_KEYUP) == 0 &&
+                !IsModifierKey(vk) && vk != Native.VK_F23 && vk != Native.VK_PAUSE;
+        }
+
         private static char Translate(uint vk, uint scan, byte[] state, IntPtr layout) {
             StringBuilder output = new StringBuilder(8);
             int count = Native.ToUnicodeEx(vk, scan, state, output, output.Capacity, 0, layout);
@@ -1339,17 +1451,45 @@ namespace RaskladWindows {
             return (style & Native.ES_PASSWORD) != 0;
         }
 
+        private async void SwitchFnLayout(IntPtr window, IntPtr focus) {
+            for (int i = 0; i < 15 && (pending != null || undoPending); i++) await Task.Delay(50);
+            if (!fnEnabled || pending != null || undoPending || Native.GetForegroundWindow() != window ||
+                FocusedWindow(window) != focus || !InputAccess.Allows(window)) return;
+            int language = unchecked((ushort)Native.GetKeyboardLayout(Native.GetWindowThreadProcessId(window, IntPtr.Zero)).ToInt64());
+            if (language != 0x409 && language != 0x419) return;
+            IntPtr target = language == 0x409 ? russianLayout : englishLayout, ignored;
+            if (Native.SendMessageTimeout(window, Native.WM_INPUTLANGCHANGEREQUEST, IntPtr.Zero, target, 2, 150, out ignored) == IntPtr.Zero)
+                Native.PostMessage(window, Native.WM_INPUTLANGCHANGEREQUEST, IntPtr.Zero, target);
+            DiagnosticLog.Write("layout.fn_requested");
+        }
+
         private IntPtr KeyboardHook(int code, IntPtr wParam, IntPtr lParam) {
             if (code < 0) return Native.CallNextHookEx(keyboardHook, code, wParam, lParam);
             Native.KbdData key = (Native.KbdData)Marshal.PtrToStructure(lParam, typeof(Native.KbdData));
             int message = wParam.ToInt32();
             int vk = (int)key.vkCode;
+            bool keyDownEvent = message == Native.WM_KEYDOWN || message == Native.WM_SYSKEYDOWN;
+            // Standalone Fn observed on this ThinkPad: VK_FF, extended scan E0 63.
+            // Firmware sends no such event for the tested Fn+F1 combination.
+            if (vk == 255 && key.scanCode == 99 && (key.flags & 1) != 0 &&
+                ((key.flags & Native.LLKHF_INJECTED) == 0 || Program.TestMode && key.extraInfo == UIntPtr.Zero)) {
+                if (keyDownEvent && !fnKeyDown) {
+                    fnKeyDown = true; fnWindow = Native.GetForegroundWindow(); fnFocus = FocusedWindow(fnWindow);
+                    fnArmed = fnEnabled && !Down(vk) && !Pressed(Native.VK_SHIFT);
+                } else if (message == Native.WM_KEYUP || message == Native.WM_SYSKEYUP) {
+                    bool activate = fnKeyDown && fnArmed; fnKeyDown = fnArmed = false;
+                    IntPtr window = fnWindow, focus = fnFocus;
+                    if (activate) dispatcher.BeginInvoke((Action)delegate { SwitchFnLayout(window, focus); });
+                }
+                return fnEnabled ? (IntPtr)1 : Native.CallNextHookEx(keyboardHook, code, wParam, lParam);
+            }
+            if (keyDownEvent && key.extraInfo != Native.OurInputMarker) fnArmed = false;
             if (vk == 20 && key.extraInfo != Native.OurInputMarker) {
                 if (message == Native.WM_KEYDOWN || message == Native.WM_SYSKEYDOWN) {
                     if (!capsKeyDown) { capsActive = !capsActive; capsKeyDown = true; }
                 } else if (message == Native.WM_KEYUP || message == Native.WM_SYSKEYUP) capsKeyDown = false;
             }
-            if (copilotEnabled && key.extraInfo != Native.OurInputMarker && key.extraInfo != Native.ReplayInputMarker) {
+            if (copilotEnabled && key.extraInfo != Native.OurInputMarker) {
                 // Клавиша Copilot: левые Win+Shift+F23. F23 не пропускаем — иначе Windows запустит Copilot;
                 // vkE8 при зажатом Win не даёт открыться «Пуску»; Pause — только после отпускания Win и Shift,
                 // иначе перенабранный текст превратится в сочетания Win+Shift+буква.
@@ -1369,7 +1509,7 @@ namespace RaskladWindows {
                     dispatcher.BeginInvoke((Action)SendCopilotPause);
                 }
             }
-            if (vk == Native.VK_PAUSE && key.extraInfo != Native.ReplayInputMarker) {
+            if (vk == Native.VK_PAUSE && key.extraInfo != Native.OurInputMarker) {
                 if ((message == Native.WM_KEYUP || message == Native.WM_SYSKEYUP) && vk == suppressedKeyUp) {
                     suppressedKeyUp = -1; return (IntPtr)1;
                 }
@@ -1462,6 +1602,15 @@ namespace RaskladWindows {
             state[Native.VK_SHIFT] = (byte)((Native.GetAsyncKeyState(Native.VK_SHIFT) & 0x8000) != 0 ? 0x80 : 0);
             state[20] = (byte)(capsActive ? 1 : 0);
             char c = vk == Native.VK_SPACE ? ' ' : vk == Native.VK_RETURN ? '\n' : vk == Native.VK_TAB ? '\t' : Translate(key.vkCode, key.scanCode, state, layout);
+            if (typoEnabled && SpaceBeforePunctuationForTest(recentTyped.ToString(), c) &&
+                (!codeProtectionEnabled || !IsCodeApp(activeApp) && !InsideMarkdownCodeForTest(recentTyped.ToString()))) {
+                RememberTyped(c); word.Clear(); recent = null; undo = null; ResetPhrase();
+                IntPtr focus = FocusedWindow(active);
+                int revision = editingRevision;
+                undoPending = true; suppressedKeyUp = vk;
+                dispatcher.BeginInvoke((Action)delegate { ProcessPunctuation(active, focus, revision, c, layout); });
+                return (IntPtr)1;
+            }
             RememberTyped(c);
             bool possibleRussianLetter = language == 0x0409 &&
                 (c == '\'' || (word.Count > 0 ? c == ',' || c == ';' : c == ',' || c == '['));
@@ -2053,6 +2202,9 @@ namespace RaskladWindows {
             try {
                 if (args.Length == 1 && args[0] == "--dpi-test") return UiDpiChecks.Run();
                 if (args.Length == 1 && args[0] == "--copilot-test") return CopilotChecks.Run();
+                if (args.Length == 1 && args[0] == "--fn-test") return FnKeyChecks.Run();
+                if (args.Length == 1 && args[0] == "--punctuation-test") return PunctuationChecks.Run();
+                if (args.Length == 1 && args[0] == "--startup-test") return StartupRegistration.Check();
                 if (args.Length == 1 && args[0] == "--self-test") return SelfTest();
                 if (args.Length == 1 && args[0] == "--hint-test") return HintDesignTests.Run();
                 if (args.Length == 1 && args[0] == "--menu-test") return TrayMenuTests.Run();

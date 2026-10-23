@@ -20,10 +20,13 @@ namespace RaskladWindows {
             } catch { }
         };
         private static void Send(params int[] codes) {
+            SendRaw(0x123, codes);
+        }
+        private static void SendRaw(uint marker, params int[] codes) {
             Native.Input[] keys = new Native.Input[codes.Length];
             for (int i = 0; i < codes.Length; i++) {
                 keys[i].type = 1; keys[i].data.key.vk = (ushort)Math.Abs(codes[i]);
-                keys[i].data.key.extraInfo = new UIntPtr(0x123);
+                keys[i].data.key.extraInfo = new UIntPtr(marker);
                 if (codes[i] < 0) keys[i].data.key.flags = Native.KEYEVENTF_KEYUP;
             }
             if (Native.SendInput((uint)keys.Length, keys, Marshal.SizeOf(typeof(Native.Input))) != keys.Length) throw new Exception("Input injection failed");
@@ -46,6 +49,20 @@ namespace RaskladWindows {
             if (attached) Native.AttachThreadInput(current, previous, false);
             await Task.Delay(150);
             if (!box.Focused || Native.GetForegroundWindow() != form.Handle) throw new Exception("Fixture focus failed");
+        }
+        private static void Check(bool valid, string name) {
+            Console.WriteLine(name + ": " + valid + " startMenu=" + startMenuActivations);
+            if (!valid || startMenuActivations != 0) throw new Exception(name);
+        }
+        private static async Task Type(TrayApp app, Form form, TextBox box, string text) {
+            app.ResetContextForTest(); box.Clear(); startMenuActivations = 0;
+            IntPtr english = (IntPtr)typeof(TrayApp).GetField("englishLayout", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(app);
+            IntPtr ignored; Native.SendMessageTimeout(form.Handle, Native.WM_INPUTLANGCHANGEREQUEST, IntPtr.Zero, english, 2, 150, out ignored);
+            foreach (char c in text) {
+                int vk = c == ' ' ? 32 : Char.ToUpperInvariant(c);
+                SendRaw(0, vk, -vk);
+                if (c != ' ') await Task.Delay(40);
+            }
         }
         internal static int Run() {
             Program.TestMode = true;
@@ -72,7 +89,43 @@ namespace RaskladWindows {
                             bool undo = box.Text == "ghbdtn" && Native.GetForegroundWindow() == form.Handle && box.Focused;
                             Console.WriteLine(mode + ": undo=" + undo + " startMenu=" + startMenuActivations);
                             if (!undo || startMenuActivations != 0) result = 1;
+                            await Chord(mode); await Task.Delay(800);
+                            bool again = box.Text == "привет" && Native.GetForegroundWindow() == form.Handle && box.Focused;
+                            Console.WriteLine(mode + ": again=" + again + " startMenu=" + startMenuActivations);
+                            if (!again || startMenuActivations != 0) result = 1;
                         }
+                        Set(app, "typoEnabled", false);
+                        foreach (string input in new[] { "ghbdtn", "ghbdtn ", "b ", "foo ghbdtn " }) {
+                            await Focus(form, box); await Type(app, form, box, input);
+                            string mapped = input.Replace("ghbdtn", "привет").Replace("b ", "и ");
+                            // No delay after the trailing space: exercise pending dictionary work.
+                            for (int tap = 0; tap < 6; tap++) {
+                                await Chord("fast"); await Task.Delay(700);
+                                Check(box.Text == (tap % 2 == 0 ? mapped : input) && box.Focused &&
+                                    Native.GetForegroundWindow() == form.Handle, "word " + input.Length + "/" + tap);
+                            }
+                        }
+                        app.ResetContextForTest(); app.ForceAutomationSelectionForTest = true;
+                        box.Text = "ghbdtn"; box.SelectAll(); startMenuActivations = 0;
+                        for (int tap = 0; tap < 4; tap++) {
+                            await Chord("fast"); await Task.Delay(800);
+                            Check(box.Text == (tap % 2 == 0 ? "привет" : "ghbdtn"), "UIA repeat " + tap);
+                        }
+                        app.ForceAutomationSelectionForTest = false;
+                        foreach (bool typo in new[] { false, true }) {
+                            Set(app, "autoEnabled", !typo); Set(app, "typoEnabled", typo);
+                            await Type(app, form, box, typo ? "helllo " : "ghbdtn "); await Task.Delay(700);
+                            string corrected = typo ? "hello " : "привет ", original = typo ? "helllo " : "ghbdtn ";
+                            Check(box.Text == corrected, "automatic " + typo);
+                            for (int tap = 0; tap < 4; tap++) {
+                                await Chord("fast"); await Task.Delay(700);
+                                Check(box.Text == (tap % 2 == 0 ? original : corrected), "automatic repeat " + typo + "/" + tap);
+                            }
+                            Check(!app.HasCustomWordForTest("helllo", false), "repeated toggles do not learn typos");
+                        }
+                        app.ResetContextForTest(); box.Text = "ghbdtn"; box.SelectAll();
+                        SendRaw(0, 162, -162, 163, -163); await Task.Delay(300);
+                        Check(box.Text == "ghbdtn", "Ctrl has no correction action");
                         await Focus(form, box); app.ResetContextForTest(); box.UseSystemPasswordChar = true;
                         box.Text = "ghbdtn"; box.SelectAll(); startMenuActivations = 0;
                         await Chord("fast"); await Task.Delay(800);
