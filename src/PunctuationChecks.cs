@@ -42,8 +42,9 @@ namespace RaskladWindows {
             int result = 0;
             using (Form form = new Form { Text = "Rasklad punctuation test", Size = new Size(550, 180) })
             using (TextBox box = new TextBox { Dock = DockStyle.Fill, Multiline = true })
-            using (TextBox other = new TextBox { Dock = DockStyle.Bottom, Text = "safe" }) {
-                form.Controls.Add(box); form.Controls.Add(other);
+            using (TextBox other = new TextBox { Dock = DockStyle.Bottom, Text = "safe" })
+            using (TextBox password = new TextBox { Dock = DockStyle.Bottom, UseSystemPasswordChar = true }) {
+                form.Controls.Add(box); form.Controls.Add(other); form.Controls.Add(password);
                 form.Shown += async delegate {
                     try {
                         foreach (char mark in ",.!?:;)»”") Check(TrayApp.SpaceBeforePunctuationForTest("слово ", mark), "rule positive " + mark);
@@ -80,8 +81,11 @@ namespace RaskladWindows {
                         foreach (string input in new[] { "`word ,", "```word ," }) {
                             await Type(app, form, box, input); Check(box.Text == input, "Markdown code protected");
                         }
-                        box.Multiline = false; box.UseSystemPasswordChar = true;
-                        await Type(app, form, box, "word ,"); Check(box.Text == "word ,", "password field untouched");
+                        form.ActiveControl = password; password.Select(); password.Focus();
+                        Check(password.Focused && Native.GetForegroundWindow() == form.Handle &&
+                            (Native.GetWindowLongPtr(password.Handle, Native.GWL_STYLE).ToInt64() & Native.ES_PASSWORD) != 0,
+                            "password fixture focus and native password style");
+                        await Type(app, form, password, "word ,"); Check(password.Text == "word ,", "password field untouched");
                     } catch (Exception ex) { Console.Error.WriteLine(ex); result = 1; }
                     finally { Send(-91, -160); form.Close(); app.ExitThread(); }
                 };

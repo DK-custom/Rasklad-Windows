@@ -216,6 +216,8 @@ namespace RaskladWindows {
         public Point? CaretPoint;
         public string SkipReason = "skip.context_unavailable";
         public bool CodeField;
+        public bool CaretCode, CaretCodeBlock;
+        public string BeforeCaret;
         public string SelectionText;
         public int NativeSelectionStart = -1;
         public TextPatternRange SelectionRange;
@@ -466,6 +468,14 @@ namespace RaskladWindows {
         private int editingRevision;
         private bool autoEnabled = true, typoEnabled = true, spellingEnabled = true, codeProtectionEnabled = true, undoPending;
         private bool copilotEnabled, copilotChord;
+        private int correctionKey = Native.VK_PAUSE;
+        private bool correctionKeyDown;
+        private bool modifierTapDown, modifierTapArmed;
+        private IntPtr modifierTapWindow, modifierTapFocus;
+        private int modifierTapGeneration;
+        private uint altGrControlTime;
+        private bool altGrControlCandidate;
+        private static readonly UIntPtr CopilotPauseMarker = new UIntPtr(0x52434F50);
         private bool fnEnabled, fnKeyDown, fnArmed;
         private IntPtr fnWindow, fnFocus;
         internal bool PopupVisibleForTest { get { return suggestionPopup.Visible; } }
@@ -512,7 +522,8 @@ namespace RaskladWindows {
                 fnEnabled = !fnEnabled; fnItem.Checked = fnEnabled; fnArmed = fnKeyDown = false; SaveSettings(); });
             fnItem.Checked = fnEnabled;
             excludeItem = new ToolStripMenuItem(UiText.Get("Исключить последнее приложение ввода", "Exclude the last typing application"), null, delegate { ToggleExcludedApp(); });
-            customWordItem = new ToolStripMenuItem(UiText.Get("Добавить последнее незнакомое слово", "Add the last unrecognized word"), null, delegate { ToggleCustomWord(); });
+            customWordItem = new ToolStripMenuItem(UiText.Get("Добавить последнее незнакомое слово", "Add the last unrecognized word"));
+            customWordItem.DropDown = new TrayMenu();
             menu.AddHeader(UiText.Get("Правка", "Corrections"));
             menu.Items.Add(autoItem);
             menu.Items.Add(typoItem);
@@ -522,7 +533,21 @@ namespace RaskladWindows {
             menu.AddHeader(UiText.Get("Клавиши", "Keys"));
             menu.Items.Add(copilotItem);
             menu.Items.Add(fnItem);
-            menu.Items.Add(new ToolStripMenuItem(UiText.Get("Copilot / Pause — смена и отмена", "Copilot / Pause — convert and undo")) { Enabled = false });
+            ToolStripMenuItem correctionItem = new ToolStripMenuItem();
+            correctionItem.DropDown = new TrayMenu();
+            Action refreshCorrectionItem = delegate {
+                correctionItem.Text = UiText.Get("Клавиша исправления: ", "Correction key: ") + CorrectionKeyName(correctionKey);
+                foreach (ToolStripMenuItem option in correctionItem.DropDownItems) option.Checked = (int)option.Tag == correctionKey;
+            };
+            foreach (int code in new[] { 19, 164, 165, 162, 163 }) {
+                ToolStripMenuItem option = new ToolStripMenuItem(CorrectionKeyName(code)) { Tag = code };
+                option.Click += delegate(object sender, EventArgs e) {
+                    correctionKey = (int)((ToolStripMenuItem)sender).Tag;
+                    correctionKeyDown = modifierTapDown = modifierTapArmed = false; refreshCorrectionItem(); SaveSettings();
+                };
+                correctionItem.DropDownItems.Add(option);
+            }
+            refreshCorrectionItem(); menu.Items.Add(correctionItem);
             menu.AddHeader(UiText.Get("Слова", "Words"));
             menu.Items.Add(customWordItem);
             menu.Items.Add(new ToolStripMenuItem(UiText.Get("IT-словарь: найти термин…", "IT dictionary: find a term…"), null, delegate {
@@ -533,10 +558,7 @@ namespace RaskladWindows {
             menu.Opening += delegate { excludeItem.Enabled = !String.IsNullOrEmpty(lastApp);
                 excludeItem.Text = lastApp == null ? UiText.Get("Исключить последнее приложение ввода", "Exclude the last typing application") : UiText.Get("Не править в «", "Do not correct in “") + lastApp + UiText.Get("»", "”");
                 excludeItem.Checked = lastApp != null && excludedApps.Contains(lastApp);
-                customWordItem.Enabled = lastUnknownWord != null;
-                customWordItem.Text = lastUnknownWord == null ? UiText.Get("Добавить последнее незнакомое слово", "Add the last unrecognized word") :
-                    UiText.Get("Считать правильным: ", "Accept spelling: ") + lastUnknownWord + (lastUnknownRussian ? " (RU)" : " (EN)");
-                customWordItem.Checked = lastUnknownWord != null && customWords.Contains(CustomKey(lastUnknownWord, lastUnknownRussian)); };
+                RefreshCustomWordMenu(); };
             menu.Items.Add(new ToolStripSeparator());
             startupItem = new ToolStripMenuItem(UiText.Get("Запускать при входе в Windows", "Start when signing in to Windows"), null, delegate {
                 try { startup.SetEnabled(!startup.Enabled); }
@@ -645,6 +667,17 @@ namespace RaskladWindows {
             File.WriteAllLines(path, lines, Encoding.UTF8);
         }
 
+        internal static bool ValidCorrectionKey(int value) { return value == 19 || value >= 162 && value <= 165; }
+        private static string CorrectionKeyName(int value) {
+            switch (value) {
+                case 164: return UiText.Get("Левый Alt", "Left Alt");
+                case 165: return UiText.Get("Правый Alt", "Right Alt");
+                case 162: return UiText.Get("Левый Ctrl", "Left Ctrl");
+                case 163: return UiText.Get("Правый Ctrl", "Right Ctrl");
+                default: return "Copilot / Break";
+            }
+        }
+
         private void LoadSettings() {
             if (!File.Exists(settingsPath)) return;
             foreach (string line in File.ReadAllLines(settingsPath, Encoding.UTF8)) {
@@ -654,6 +687,10 @@ namespace RaskladWindows {
                 if (line == "protectCode=0") codeProtectionEnabled = false;
                 if (line == "copilot=1") copilotEnabled = true;
                 if (line == "fn=1") fnEnabled = true;
+                if (line.StartsWith("correctionKey=", StringComparison.Ordinal)) {
+                    int value;
+                    if (Int32.TryParse(line.Substring(14), out value) && ValidCorrectionKey(value)) correctionKey = value;
+                }
             }
         }
 
@@ -666,21 +703,53 @@ namespace RaskladWindows {
                     "hints=" + (spellingEnabled ? "1" : "0"),
                     "protectCode=" + (codeProtectionEnabled ? "1" : "0"),
                     "copilot=" + (copilotEnabled ? "1" : "0"),
-                    "fn=" + (fnEnabled ? "1" : "0")
+                    "fn=" + (fnEnabled ? "1" : "0"),
+                    "correctionKey=" + correctionKey.ToString(System.Globalization.CultureInfo.InvariantCulture)
                 }, Encoding.UTF8);
             } catch (Exception ex) {
                 tray.Text = UiText.Get("Ошибка сохранения настроек: ", "Could not save settings: ") + ex.GetType().Name;
             }
         }
 
-        private void ToggleCustomWord() {
-            if (lastUnknownWord == null) return;
-            string key = CustomKey(lastUnknownWord, lastUnknownRussian);
+        private void RefreshCustomWordMenu() {
+            // Dispose old entries as this menu is rebuilt for every opening.
+            while (customWordItem.DropDownItems.Count > 0) customWordItem.DropDownItems[0].Dispose();
+            string original = lastUnknownWord;
+            bool russian = lastUnknownRussian;
+            customWordItem.Enabled = ValidCustomWord(original, russian);
+            customWordItem.Text = !customWordItem.Enabled ? UiText.Get("Добавить последнее незнакомое слово", "Add the last unrecognized word") :
+                UiText.Get("Считать правильным: ", "Accept spelling: ") + original;
+            if (!customWordItem.Enabled) return;
+            HashSet<string> offered = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            Action<string, bool> add = delegate(string text, bool language) {
+                if (!ValidCustomWord(text, language) || !offered.Add(CustomKey(text, language))) return;
+                ToolStripMenuItem option = new ToolStripMenuItem(text + (language ? " (RU)" : " (EN)"));
+                option.Checked = customWords.Contains(CustomKey(text, language));
+                option.Click += delegate { ToggleCustomWord(text, language, option); };
+                customWordItem.DropDownItems.Add(option);
+            };
+            bool convertedRussian;
+            string converted = ConvertSelectedText(original, russian, out convertedRussian);
+            add(original, russian);
+            add(converted, convertedRussian);
+            int directCount = customWordItem.DropDownItems.Count;
+            try {
+                foreach (string suggestion in speller.Suggestions(original, russian, 3)) add(suggestion, russian);
+                if (ValidCustomWord(converted, convertedRussian))
+                    foreach (string suggestion in speller.Suggestions(converted, convertedRussian, 3)) add(suggestion, convertedRussian);
+            } catch (Exception) { DiagnosticLog.Write("error.dictionary_menu_suggestions"); }
+            if (customWordItem.DropDownItems.Count > directCount)
+                customWordItem.DropDownItems.Insert(directCount, new ToolStripSeparator());
+        }
+
+        private void ToggleCustomWord(string text, bool russianLanguage, ToolStripMenuItem option) {
+            if (!ValidCustomWord(text, russianLanguage)) return;
+            string key = CustomKey(text, russianLanguage);
             bool wasAdded = customWords.Contains(key);
             if (wasAdded) customWords.Remove(key); else customWords.Add(key);
             try {
                 if (!Program.TestMode) SaveCustomWords(customWordsPath, customWords);
-                customWordItem.Checked = !wasAdded;
+                option.Checked = !wasAdded;
             } catch (Exception ex) {
                 if (wasAdded) customWords.Add(key); else customWords.Remove(key);
                 tray.Text = UiText.Get("Ошибка сохранения слова: ", "Could not save the word: ") + ex.GetType().Name;
@@ -713,6 +782,113 @@ namespace RaskladWindows {
             int start = Math.Max(text.LastIndexOf('\n') + 1, lastBlockEnd), ticks = 0;
             for (int i = start; i < text.Length; i++) if (text[i] == '`') ticks++;
             return (ticks & 1) != 0;
+        }
+
+        internal static bool InsideMarkdownCodeForTest(string field, string typed) {
+            if (field == null) return InsideMarkdownCodeForTest(typed);
+            // Rich editors may remove or temporarily expose only one delimiter.
+            // A completed inline pair in the current typing stream closes that span.
+            if (ClosedInlineCodeForTest(typed) && !OpenFenceForTest(field)) return false;
+            if (InsideMarkdownCodeForTest(field)) return true;
+            if (!InsideMarkdownCodeForTest(typed)) return false;
+            int mark = typed.LastIndexOf('`');
+            if (mark < 0) return false;
+            string after = System.Text.RegularExpressions.Regex.Replace(typed.Substring(mark + 1), @"\s", "");
+            string actual = System.Text.RegularExpressions.Regex.Replace(field, @"\s", "");
+            return actual.Length != 0 && actual.EndsWith(after, StringComparison.Ordinal);
+        }
+
+        private static bool OpenFenceForTest(string text) {
+            int count = 0;
+            for (int i = 0; i + 2 < text.Length; i++)
+                if (text[i] == '`' && text[i + 1] == '`' && text[i + 2] == '`') { count++; i += 2; }
+            return (count & 1) != 0;
+        }
+
+        internal static bool ClosedInlineCodeForTest(string typed) {
+            if (InsideMarkdownCodeForTest(typed)) return false;
+            int last = typed.LastIndexOf('`'), line = typed.LastIndexOf('\n');
+            if (last <= line || last > 0 && typed[last - 1] == '`') return false;
+            int previous = typed.LastIndexOf('`', last - 1);
+            return previous > line && (previous == 0 || typed[previous - 1] != '`');
+        }
+
+        internal static bool CodeMarkerForTest(string marker, bool wholeField) {
+            marker = (marker ?? "").ToLowerInvariant();
+            return marker.Contains("monaco") || marker.Contains("codemirror") || marker.Contains("cm-content") ||
+                marker.Contains("cm-editor") || marker.Contains("ace_text") || marker.Contains("ace_editor") ||
+                !wholeField && (marker.Contains("code") || marker == "pre" || marker == "код");
+        }
+
+        private static bool CaretInCode(AutomationElement node, AutomationElement field, out bool block) {
+            bool code = false, foundBlock = false; block = false;
+            for (int depth = 0; node != null && depth < 16; depth++) {
+                if (Automation.Compare(node, field)) { block = foundBlock; return code; } // Exclude the field itself.
+                if (node.Current.IsPassword || node.Current.ControlType == ControlType.Window) return false;
+                string marker = (node.Current.ClassName + " " + node.Current.AutomationId).Trim().ToLowerInvariant();
+                foundBlock |= marker.Contains("code-block") || marker.Contains("codeblock") || marker.Contains("code_block") || marker == "pre";
+                code |= CodeMarkerForTest(marker, false) ||
+                    CodeMarkerForTest(node.Current.LocalizedControlType, false);
+                node = TreeWalker.RawViewWalker.GetParent(node);
+            }
+            return false;
+        }
+
+        private static void ReadCodeContext(AutomationElement focused, InputContext context) {
+            AutomationElement ancestor = focused;
+            for (int depth = 0; ancestor != null && depth < 8; depth++) {
+                if (ancestor.Current.IsPassword) { context.Protected = true; return; }
+                context.CodeField |= CodeMarkerForTest(ancestor.Current.ClassName + " " + ancestor.Current.AutomationId, true);
+                if (ancestor.Current.ControlType == ControlType.Window) break;
+                ancestor = TreeWalker.RawViewWalker.GetParent(ancestor);
+            }
+            object value = null;
+            AutomationElement textField = focused;
+            for (int depth = 0; textField != null && depth < 6; depth++) {
+                if (textField.Current.IsPassword) { context.Protected = true; return; }
+                if (textField.TryGetCurrentPattern(TextPattern.Pattern, out value)) break;
+                if (textField.Current.ControlType == ControlType.Window) return;
+                textField = TreeWalker.RawViewWalker.GetParent(textField);
+            }
+            if (value == null || textField == null) return;
+            TextPattern pattern = (TextPattern)value;
+            TextPatternRange[] selected = pattern.GetSelection();
+            if (selected.Length != 1) return;
+            TextPatternRange caret = selected[0].Clone();
+            caret.MoveEndpointByRange(TextPatternRangeEndpoint.End, caret, TextPatternRangeEndpoint.Start);
+            TextPatternRange fieldRange = Automation.Compare(textField, focused) ? pattern.DocumentRange : pattern.RangeFromChild(focused);
+            if (caret.CompareEndpoints(TextPatternRangeEndpoint.Start, fieldRange, TextPatternRangeEndpoint.Start) >= 0 &&
+                caret.CompareEndpoints(TextPatternRangeEndpoint.End, fieldRange, TextPatternRangeEndpoint.End) <= 0) {
+                TextPatternRange before = caret.Clone();
+                before.MoveEndpointByUnit(TextPatternRangeEndpoint.Start, TextUnit.Character, -4000);
+                // Chromium can move a range beyond its editable container into the chat transcript.
+                if (before.CompareEndpoints(TextPatternRangeEndpoint.Start, fieldRange, TextPatternRangeEndpoint.Start) < 0)
+                    before.MoveEndpointByRange(TextPatternRangeEndpoint.Start, fieldRange, TextPatternRangeEndpoint.Start);
+                context.BeforeCaret = before.GetText(4000);
+            }
+            // Browser carets often have no Win32 caret. Resolve the UIA caret before hit-testing code.
+            System.Windows.Rect[] caretBounds = caret.GetBoundingRectangles();
+            if (caretBounds.Length > 0) {
+                System.Windows.Rect bounds = caretBounds[0];
+                if (!bounds.IsEmpty && !Double.IsNaN(bounds.Left) && !Double.IsInfinity(bounds.Left) && bounds.Height > 0)
+                    context.CaretPoint = new Point((int)bounds.Left, (int)bounds.Top);
+            }
+            bool block;
+            context.CaretCode |= CaretInCode(caret.GetEnclosingElement(), textField, out block);
+            context.CaretCodeBlock |= block;
+            if (!context.CaretCode) {
+                context.CaretCode |= CodeCaret.AtElement(caret.GetEnclosingElement(), focused, out block);
+                context.CaretCodeBlock |= block;
+            }
+            if (!context.CaretCode && context.CaretPoint.HasValue) {
+                Point point = context.CaretPoint.Value;
+                context.CaretCode |= CaretInCode(AutomationElement.FromPoint(new System.Windows.Point(point.X, point.Y + 2)), textField, out block);
+                context.CaretCodeBlock |= block;
+                if (!context.CaretCode) {
+                    context.CaretCode |= CodeCaret.AtPoint(new Point(point.X + 1, point.Y + 2), focused, out block);
+                    context.CaretCodeBlock |= block;
+                }
+            }
         }
 
         private void RememberTyped(char c) {
@@ -762,7 +938,7 @@ namespace RaskladWindows {
             input.data.key.vk = (ushort)key.vkCode;
             input.data.key.scan = (ushort)key.scanCode;
             input.data.key.flags = (up ? Native.KEYEVENTF_KEYUP : 0) | ((key.flags & 1) != 0 ? 1u : 0u);
-            input.data.key.extraInfo = Native.ReplayInputMarker;
+            input.data.key.extraInfo = key.extraInfo == CopilotPauseMarker ? CopilotPauseMarker : Native.ReplayInputMarker;
             return input;
         }
 
@@ -865,14 +1041,22 @@ namespace RaskladWindows {
             Task<InputContext> check = Task.Run(() => {
                 InputContext context = new InputContext { CaretPoint = initialCaret };
                 try {
+                    InputContext native;
+                    if (TryNativeSelection(queryFocus, out native)) {
+                        if (native.Protected) return native;
+                        context.BeforeCaret = native.BeforeCaret;
+                    }
                     AutomationElement focused = AutomationElement.FocusedElement;
                     if (focused == null) return context;
                     if (focused.Current.IsPassword) { context.SkipReason = "skip.password"; return context; }
                     context.Protected = false;
+                    try { ReadCodeContext(focused, context); }
+                    catch (Exception) { DiagnosticLog.Write("context.code_unavailable"); }
+                    if (context.Protected) return context;
                     string className = focused.Current.ClassName ?? "";
                     string automationId = focused.Current.AutomationId ?? "";
                     string marker = className + " " + automationId;
-                    context.CodeField = marker.IndexOf("monaco", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    context.CodeField |= marker.IndexOf("monaco", StringComparison.OrdinalIgnoreCase) >= 0 ||
                         marker.IndexOf("codemirror", StringComparison.OrdinalIgnoreCase) >= 0 ||
                         marker.IndexOf("ace_text", StringComparison.OrdinalIgnoreCase) >= 0 ||
                         marker.IndexOf("ace_editor", StringComparison.OrdinalIgnoreCase) >= 0;
@@ -943,7 +1127,8 @@ namespace RaskladWindows {
 
         private bool IsProtectedCode(IntPtr window, InputContext context) {
             return codeProtectionEnabled && (IsCodeApp(ApplicationName(window)) || context.CodeField ||
-                InsideMarkdownCodeForTest(recentTyped.ToString()));
+                context.CaretCode ||
+                InsideMarkdownCodeForTest(context.BeforeCaret, recentTyped.ToString()));
         }
 
         private async void ProcessPunctuation(IntPtr window, IntPtr focus, int revision, char mark, IntPtr layout) {
@@ -1285,6 +1470,7 @@ namespace RaskladWindows {
                 if (text == null || first < 0 || last < first || last > text.Length || last - first > 16384) return true;
                 context.Protected = false;
                 context.NativeSelectionStart = first;
+                context.BeforeCaret = text.Substring(Math.Max(0, first - 4000), Math.Min(first, 4000));
                 if (last > first) context.SelectionText = text.Substring(first, last - first);
                 return true;
             } finally { Marshal.FreeHGlobal(start); Marshal.FreeHGlobal(end); }
@@ -1397,9 +1583,10 @@ namespace RaskladWindows {
 
         private static bool Pressed(int vk) { return (Native.GetAsyncKeyState(vk) & 0x8000) != 0; }
 
-        /// Pause от клавиши Copilot: без метки, чтобы его обработал тот же путь, что и настоящий Pause.
+        /// Copilot uses the correction path independently of the user-selected key.
         private static void SendCopilotPause() {
             Native.Input down = new Native.Input(); down.type = 1; down.data.key.vk = Native.VK_PAUSE;
+            down.data.key.extraInfo = CopilotPauseMarker;
             Native.Input up = down; up.data.key.flags = Native.KEYEVENTF_KEYUP;
             Native.Input[] keys = { down, up };
             if (Native.SendInput((uint)keys.Length, keys, Marshal.SizeOf(typeof(Native.Input))) != keys.Length)
@@ -1418,10 +1605,10 @@ namespace RaskladWindows {
                 vk == 160 || vk == 161 || vk == 162 || vk == 163 || vk == 164 || vk == 165;
         }
 
-        private static bool ReplayEditsInput(Native.Input input) {
+        private bool ReplayEditsInput(Native.Input input) {
             int vk = input.data.key.vk;
             return (input.data.key.flags & Native.KEYEVENTF_KEYUP) == 0 &&
-                !IsModifierKey(vk) && vk != Native.VK_F23 && vk != Native.VK_PAUSE;
+                !IsModifierKey(vk) && vk != Native.VK_F23 && vk != Native.VK_PAUSE && vk != correctionKey;
         }
 
         private static char Translate(uint vk, uint scan, byte[] state, IntPtr layout) {
@@ -1453,13 +1640,13 @@ namespace RaskladWindows {
 
         private async void SwitchFnLayout(IntPtr window, IntPtr focus) {
             for (int i = 0; i < 15 && (pending != null || undoPending); i++) await Task.Delay(50);
-            if (!fnEnabled || pending != null || undoPending || Native.GetForegroundWindow() != window ||
-                FocusedWindow(window) != focus || !InputAccess.Allows(window)) return;
-            int language = unchecked((ushort)Native.GetKeyboardLayout(Native.GetWindowThreadProcessId(window, IntPtr.Zero)).ToInt64());
-            if (language != 0x409 && language != 0x419) return;
-            IntPtr target = language == 0x409 ? russianLayout : englishLayout, ignored;
-            if (Native.SendMessageTimeout(window, Native.WM_INPUTLANGCHANGEREQUEST, IntPtr.Zero, target, 2, 150, out ignored) == IntPtr.Zero)
-                Native.PostMessage(window, Native.WM_INPUTLANGCHANGEREQUEST, IntPtr.Zero, target);
+            if (!fnEnabled || pending != null || undoPending || Native.GetForegroundWindow() != window) return;
+            // Use Windows' input switcher: it also works on the desktop and when no edit has focus.
+            // This sends no text and does not inspect the target application's input field.
+            Native.Input[] keys = { VirtualKey(Native.VK_LWIN, false), VirtualKey(Native.VK_SPACE, false),
+                VirtualKey(Native.VK_SPACE, true), VirtualKey(Native.VK_LWIN, true) };
+            if (Native.SendInput((uint)keys.Length, keys, Marshal.SizeOf(typeof(Native.Input))) != keys.Length)
+                DiagnosticLog.Write("layout.fn_failed");
             DiagnosticLog.Write("layout.fn_requested");
         }
 
@@ -1469,6 +1656,41 @@ namespace RaskladWindows {
             int message = wParam.ToInt32();
             int vk = (int)key.vkCode;
             bool keyDownEvent = message == Native.WM_KEYDOWN || message == Native.WM_SYSKEYDOWN;
+            // Modifier taps pass through to Windows; any chord cancels correction.
+            // Act only after release, so replayed text never inherits Alt/Ctrl.
+            bool externalKey = key.extraInfo != Native.OurInputMarker && key.extraInfo != CopilotPauseMarker &&
+                key.extraInfo != Native.ReplayInputMarker &&
+                ((key.flags & Native.LLKHF_INJECTED) == 0 || Program.TestMode && key.extraInfo == UIntPtr.Zero);
+            if (externalKey && correctionKey >= 162 && correctionKey <= 165) {
+                bool pairedAltGr = vk == 165 && keyDownEvent && altGrControlCandidate && key.time == altGrControlTime;
+                if (keyDownEvent) {
+                    altGrControlCandidate = vk == 162 && !Pressed(162) && !Pressed(163);
+                    if (altGrControlCandidate) altGrControlTime = key.time;
+                }
+                if (keyDownEvent && vk != correctionKey) { modifierTapArmed = false; modifierTapGeneration++; }
+                if (vk == correctionKey) {
+                    if (keyDownEvent && !modifierTapDown) {
+                        modifierTapDown = true; modifierTapArmed = true;
+                        foreach (int modifierCode in new[] { 160, 161, 162, 163, 164, 165, 91, 92 })
+                            if (modifierCode != vk && !(pairedAltGr && modifierCode == 162) && Pressed(modifierCode)) modifierTapArmed = false;
+                        modifierTapWindow = Native.GetForegroundWindow(); modifierTapFocus = FocusedWindow(modifierTapWindow);
+                    } else if (message == Native.WM_KEYUP || message == Native.WM_SYSKEYUP) {
+                        bool activate = modifierTapDown && modifierTapArmed;
+                        modifierTapDown = modifierTapArmed = false;
+                        if (activate) {
+                            if (vk == 164 || vk == 165) {
+                                Native.Input[] mask = { VirtualKey(0xE8, false), VirtualKey(0xE8, true) };
+                                Native.SendInput((uint)mask.Length, mask, Marshal.SizeOf(typeof(Native.Input)));
+                            }
+                            IntPtr window = modifierTapWindow, focus = modifierTapFocus; int generation = modifierTapGeneration;
+                            dispatcher.BeginInvoke((Action)delegate {
+                                if (generation == modifierTapGeneration && Native.GetForegroundWindow() == window &&
+                                    FocusedWindow(window) == focus && !Down(0) && !Pressed(Native.VK_SHIFT)) SendCopilotPause();
+                            });
+                        }
+                    }
+                }
+            }
             // Standalone Fn observed on this ThinkPad: VK_FF, extended scan E0 63.
             // Firmware sends no such event for the tested Fn+F1 combination.
             if (vk == 255 && key.scanCode == 99 && (key.flags & 1) != 0 &&
@@ -1509,11 +1731,17 @@ namespace RaskladWindows {
                     dispatcher.BeginInvoke((Action)SendCopilotPause);
                 }
             }
-            if (vk == Native.VK_PAUSE && key.extraInfo != Native.OurInputMarker) {
-                if ((message == Native.WM_KEYUP || message == Native.WM_SYSKEYUP) && vk == suppressedKeyUp) {
-                    suppressedKeyUp = -1; return (IntPtr)1;
+            if ((vk == correctionKey && correctionKey == Native.VK_PAUSE || vk == Native.VK_PAUSE && key.extraInfo == CopilotPauseMarker) &&
+                key.extraInfo != Native.OurInputMarker &&
+                ((key.flags & Native.LLKHF_INJECTED) == 0 || key.extraInfo == CopilotPauseMarker || key.extraInfo == Native.ReplayInputMarker || Program.TestMode && key.extraInfo == UIntPtr.Zero)) {
+                if (message == Native.WM_KEYUP || message == Native.WM_SYSKEYUP) {
+                    bool captured = correctionKeyDown; correctionKeyDown = false;
+                    if (vk == suppressedKeyUp) suppressedKeyUp = -1;
+                    if (captured) return (IntPtr)1;
                 }
-                if ((message == Native.WM_KEYDOWN || message == Native.WM_SYSKEYDOWN) && pending == null && !undoPending) {
+                if (keyDownEvent && correctionKeyDown) return (IntPtr)1;
+                // Modified Pause/Break retains its usual application shortcut.
+                if (keyDownEvent && !Down(vk) && !Pressed(Native.VK_SHIFT) && pending == null && !undoPending) {
                     IntPtr pauseWindow = Native.GetForegroundWindow();
                     PendingWord item = null;
                     if (pauseWindow != IntPtr.Zero &&
@@ -1526,13 +1754,13 @@ namespace RaskladWindows {
                         if (item != null && (item.converted == null || item.converted == item.original)) item = null;
                         IntPtr pauseFocus = FocusedWindow(pauseWindow);
                         int revision = editingRevision;
-                        word.Clear(); recent = null; manual = item; undoPending = true; suppressedKeyUp = vk;
+                        word.Clear(); recent = null; manual = item; undoPending = true; suppressedKeyUp = vk; correctionKeyDown = true;
                         dispatcher.BeginInvoke((Action)delegate { ProcessCorrection(pauseWindow, pauseFocus, revision); });
                         return (IntPtr)1;
                     }
                 }
             }
-            if ((key.flags & Native.LLKHF_INJECTED) != 0 && key.extraInfo != Native.ReplayInputMarker &&
+            if ((key.flags & Native.LLKHF_INJECTED) != 0 && key.extraInfo != Native.ReplayInputMarker && key.extraInfo != CopilotPauseMarker &&
                 !(Program.TestMode && key.extraInfo == UIntPtr.Zero))
                 return Native.CallNextHookEx(keyboardHook, code, wParam, lParam);
             if ((message == Native.WM_KEYUP || message == Native.WM_SYSKEYUP) && vk == suppressedKeyUp) {
@@ -1612,6 +1840,12 @@ namespace RaskladWindows {
                 return (IntPtr)1;
             }
             RememberTyped(c);
+            if (codeProtectionEnabled && c == '`') {
+                // A delimiter belongs to the code span, including its last word.
+                // Pass it unchanged; start tracking the next ordinary word afresh.
+                word.Clear(); recent = null; ResetPhrase();
+                return Native.CallNextHookEx(keyboardHook, code, wParam, lParam);
+            }
             bool possibleRussianLetter = language == 0x0409 &&
                 (c == '\'' || (word.Count > 0 ? c == ',' || c == ';' : c == ',' || c == '['));
             if (IsRussian(c) || IsEnglish(c) || possibleRussianLetter) {
@@ -1747,9 +1981,14 @@ namespace RaskladWindows {
             IntPtr targetWindow = Native.GetForegroundWindow(), targetFocus = FocusedWindow(targetWindow);
             // Allow the edit control to consume replacement input before reading its new caret.
             await Task.Delay(60);
+            if (Program.TestMode) Console.WriteLine("hint before context: generation=" + (generation == suggestionPopup.Generation) +
+                " window=" + (Native.GetForegroundWindow() == targetWindow) + " focus=" + (FocusedWindow(targetWindow) == targetFocus));
             if (generation != suggestionPopup.Generation || !spellingEnabled || Native.GetForegroundWindow() != targetWindow ||
                 FocusedWindow(targetWindow) != targetFocus) return;
             InputContext current = await GetInputContextAsync();
+            if (Program.TestMode) Console.WriteLine("hint context: protected=" + current.Protected + " reason=" + current.SkipReason +
+                " generation=" + (generation == suggestionPopup.Generation) + " window=" + (Native.GetForegroundWindow() == targetWindow) +
+                " focus=" + (FocusedWindow(targetWindow) == targetFocus));
             if (generation != suggestionPopup.Generation || current.Protected || Native.GetForegroundWindow() != targetWindow ||
                 FocusedWindow(targetWindow) != targetFocus) return;
             if (before.Length > 100) before = before.Substring(0, 100) + "…";
@@ -2207,6 +2446,7 @@ namespace RaskladWindows {
                 }
                 if (args.Length == 1 && args[0] == "--dpi-test") return UiDpiChecks.Run();
                 if (args.Length == 1 && args[0] == "--copilot-test") return CopilotChecks.Run();
+                if (args.Length == 1 && args[0] == "--correction-key-test") return CorrectionKeyChecks.Run();
                 if (args.Length == 1 && args[0] == "--fn-test") return FnKeyChecks.Run();
                 if (args.Length == 1 && args[0] == "--punctuation-test") return PunctuationChecks.Run();
                 if (args.Length == 1 && args[0] == "--startup-test") return StartupRegistration.Check();

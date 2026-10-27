@@ -1,3 +1,21 @@
+# Rasklad 1.0.33 — Windows x64
+
+- «Считать правильным» предлагает исходное слово, вариант в другой раскладке и до трёх предложений системного словаря для каждого языка. Выбранное написание сохраняется в пользовательском словаре; повторный выбор удаляет запись.
+- Клавиша исправления на выбор: Copilot / Break, левый или правый Alt, левый или правый Ctrl. Одиночное нажатие исправляет слово/выделение; сочетания сохраняют обычное действие. Copilot работает независимо от выбранной клавиши.
+- Fn переключает язык ввода даже без активного текстового поля. При нескольких установленных способах ввода используется системный порядок Windows.
+- Улучшена защита inline-кода и блоков кода: закрывающая обратная кавычка сохраняется, обычный текст после неё исправляется. Семантический тег code распознаётся через Windows UI Automation и после переходов мышью или стрелками.
+- Чтение контекста ограничено текущим полем ввода: история чата не влияет на распознавание кода.
+- Убран лишний разделитель над первой секцией меню.
+
+English:
+- Accept spelling offers the original word, the other keyboard layout and up to three Windows spelling suggestions per language. Each choice independently adds/removes the selected spelling in the user dictionary.
+- Select Copilot / Break, Left/Right Alt or Left/Right Ctrl as the correction key. Standalone modifier taps correct text without breaking normal shortcuts; Copilot remains independent.
+- Fn switches input languages even without text-field focus, following the Windows input-method order.
+- Inline and rich code protection survives closing backticks and caret navigation. Native Windows UIA code roles are recognized; context reads stay inside the current field.
+- Removed the leading tray-menu separator.
+
+Signed with the self-signed Rasklad (DK-custom) certificate. This is not a trusted-publisher certificate; Windows trust stores are not changed. Public certificate and SHA256SUMS.txt are included.
+
 # Rasklad 1.0.32 — Windows x64
 
 - English and Russian UI follows the Windows display language at startup; other languages fall back to English. Menu commands, dictionary window, hints and application messages are localized.

@@ -22,7 +22,7 @@ namespace RaskladWindows {
             ShowImageMargin = false; ShowCheckMargin = true;
         }
         internal void AddHeader(string text) {
-            Items.Add(new ToolStripSeparator());
+            if (Items.Count != 0) Items.Add(new ToolStripSeparator());
             ToolStripMenuItem item = new ToolStripMenuItem(text);
             item.Enabled = false; item.Tag = HeaderTag;
             Items.Add(item);
@@ -36,6 +36,12 @@ namespace RaskladWindows {
                 item.Font = item.Tag == HeaderTag ? headerFont : menuFont;
                 item.Margin = Padding.Empty;
                 if (item is ToolStripMenuItem) item.Padding = Padding.Empty;
+                ToolStripMenuItem parent = item as ToolStripMenuItem;
+                if (parent != null && parent.HasDropDownItems) {
+                    parent.DropDown.Renderer = Renderer; parent.DropDown.Font = menuFont;
+                    parent.DropDown.BackColor = palette.Back; parent.DropDown.ForeColor = palette.Fore;
+                    foreach (ToolStripItem child in parent.DropDownItems) { child.Font = menuFont; child.ForeColor = palette.Fore; child.BackColor = palette.Back; }
+                }
             }
             base.OnOpening(e);
             PerformLayout();
@@ -111,8 +117,9 @@ namespace RaskladWindows {
                     Native.ShowWindow(form.Handle, 1);
                     TrayMenu menu = app.MenuForTest;
                     Require(app.BrandingForTest, "tray name/icon mismatch");
-                    Require(menu.Items.Count == 21 && menu.Items[20].Text == UiText.Get("Выход", "Exit"), "menu commands changed");
-                    Require(menu.Items[2].Text == UiText.Get("Автопереключение раскладки", "Automatic layout switching"), "wrong UI language");
+                    Require(!(menu.Items[0] is ToolStripSeparator), "leading separator must be absent");
+                    Require(menu.Items.Count == 20 && menu.Items[19].Text == UiText.Get("Выход", "Exit"), "menu commands changed");
+                    Require(menu.Items[1].Text == UiText.Get("Автопереключение раскладки", "Automatic layout switching"), "wrong UI language");
                     if (!UiText.Russian)
                         foreach (ToolStripItem item in menu.Items)
                             Require(!System.Text.RegularExpressions.Regex.IsMatch(item.Text, "[А-Яа-яЁё]"), "Russian label in English UI: " + item.Text);
@@ -122,19 +129,25 @@ namespace RaskladWindows {
                         Require(dictionary.StatusForTest == UiText.Get("Термин не найден. Попробуйте другое написание или начало слова.", "Term not found. Try a different spelling or a word prefix."), "dictionary status language");
                     }
                     Console.WriteLine("UI culture=" + System.Globalization.CultureInfo.CurrentUICulture.Name + " menu and dictionary PASS");
-                    foreach (int header in new[] { 1, 8, 13 }) {
+                    foreach (int header in new[] { 0, 7, 12 }) {
                         Require(menu.Items[header].Tag == TrayMenu.HeaderTag && !menu.Items[header].Enabled, "section header missing at " + header);
-                        Require(menu.Items[header - 1] is ToolStripSeparator, "section separator missing at " + header);
+                        Require(header == 0 || menu.Items[header - 1] is ToolStripSeparator, "section separator missing at " + header);
                     }
-                    Require(menu.Items[19].Text == AppBranding.Name + " " + AppBranding.Version && !menu.Items[19].Enabled, "version row missing");
-                    ToolStripMenuItem copilot = (ToolStripMenuItem)menu.Items[9];
+                    Require(menu.Items[18].Text == AppBranding.Name + " " + AppBranding.Version && !menu.Items[18].Enabled, "version row missing");
+                    ToolStripMenuItem copilot = (ToolStripMenuItem)menu.Items[8];
                     Require(!copilot.Checked, "Copilot must be opt-in");
                     copilot.PerformClick(); Require(copilot.Checked, "Copilot toggle failed");
                     copilot.PerformClick(); Require(!copilot.Checked, "Copilot toggle restore failed");
-                    ToolStripMenuItem fn = (ToolStripMenuItem)menu.Items[10];
+                    ToolStripMenuItem fn = (ToolStripMenuItem)menu.Items[9];
                     Require(!fn.Checked, "Fn must be opt-in");
                     fn.PerformClick(); Require(fn.Checked, "Fn toggle failed");
                     fn.PerformClick(); Require(!fn.Checked, "Fn toggle restore failed");
+                    ToolStripMenuItem correction = (ToolStripMenuItem)menu.Items[10];
+                    Require(correction.DropDownItems.Count == 5, "correction key options missing");
+                    ToolStripMenuItem pause = (ToolStripMenuItem)correction.DropDownItems[0], ctrl = (ToolStripMenuItem)correction.DropDownItems[4];
+                    Require(pause.Checked && !ctrl.Checked, "default correction key must be Pause");
+                    ctrl.PerformClick(); Require(ctrl.Checked && !pause.Checked && correction.Text.EndsWith("Ctrl"), "correction key selection failed");
+                    pause.PerformClick(); Require(pause.Checked && !ctrl.Checked, "correction key restore failed");
                     Require(menu.Font.SizeInPoints == 10F && menu.Font.FontFamily.Equals(SystemFonts.MenuFont.FontFamily), "menu font must be 10pt with system family");
                     foreach (bool dark in new[] { false, true }) {
                         menu.ForceDarkForTest = dark;
@@ -147,14 +160,14 @@ namespace RaskladWindows {
                             Require(menu.ClientRectangle.Contains(item.Bounds), "clipped row: " + item.Text + " menu=" + menu.ClientRectangle + " item=" + item.Bounds);
                             if (!(item is ToolStripSeparator)) Require(TextRenderer.MeasureText(item.Text, menu.Font).Width <= menu.Width - 40, "clipped label: " + item.Text);
                         }
-                        for (int i = 2; i <= 5; i++) {
+                        for (int i = 1; i <= 4; i++) {
                             ToolStripMenuItem item = (ToolStripMenuItem)menu.Items[i];
                             bool before = item.Checked; item.PerformClick();
                             Require(item.Checked != before, "toggle stopped working");
                             item.PerformClick(); Require(item.Checked == before, "toggle restore failed");
                         }
                         menu.Show(form, new Point(20, 20));
-                        menu.Items[2].Select();
+                        menu.Items[1].Select();
                         using (Bitmap bitmap = new Bitmap(menu.Width, menu.Height)) {
                             menu.DrawToBitmap(bitmap, new Rectangle(Point.Empty, bitmap.Size));
                             bitmap.Save(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "menu-" + (dark ? "Dark" : "Light") + ".png"), System.Drawing.Imaging.ImageFormat.Png);
@@ -166,13 +179,13 @@ namespace RaskladWindows {
                     menu.Show(form, new Point(20, 20));
                     Require(menu.DarkForTest == (HintTheme.IsDark() && !SystemInformation.HighContrast), "automatic theme failed");
                     menu.Close(); Console.WriteLine("automatic Windows theme PASS");
-                    ToolStripMenuItem startup = (ToolStripMenuItem)menu.Items[17];
+                    ToolStripMenuItem startup = (ToolStripMenuItem)menu.Items[16];
                     Require(!startup.Checked && startup.Enabled, "isolated startup test must begin disabled");
                     startup.PerformClick(); Require(startup.Checked, "startup menu enable failed");
                     menu.Show(form, new Point(20, 20)); Require(startup.Checked, "startup state was not refreshed");
                     startup.PerformClick(); Require(!startup.Checked, "startup menu disable failed");
                     menu.Close(); Console.WriteLine("startup menu toggle and actual state refresh PASS");
-                    ToolStripMenuItem excluded = (ToolStripMenuItem)menu.Items[6], custom = (ToolStripMenuItem)menu.Items[14];
+                    ToolStripMenuItem excluded = (ToolStripMenuItem)menu.Items[5], custom = (ToolStripMenuItem)menu.Items[13];
                     Require(!excluded.Enabled && !custom.Enabled, "empty context commands must be disabled");
                     typeof(TrayApp).GetField("lastApp", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(app, "MenuFixture");
                     typeof(TrayApp).GetField("lastUnknownWord", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(app, "raskladfixture");
@@ -180,8 +193,34 @@ namespace RaskladWindows {
                     Require(excluded.Enabled && excluded.Text.Contains("MenuFixture") && custom.Enabled && custom.Text.Contains("raskladfixture"), "dynamic context labels failed");
                     excluded.PerformClick(); Require(excluded.Checked, "exclude command failed");
                     excluded.PerformClick(); Require(!excluded.Checked, "exclude restore failed");
-                    custom.PerformClick(); Require(app.HasCustomWordForTest("raskladfixture", false), "dictionary add failed");
-                    custom.PerformClick(); Require(!app.HasCustomWordForTest("raskladfixture", false), "dictionary remove failed");
+                    Require(custom.DropDown is TrayMenu && custom.DropDownItems.Count >= 2, "dictionary spelling choices missing");
+                    ToolStripMenuItem original = (ToolStripMenuItem)custom.DropDownItems[0];
+                    original.PerformClick(); Require(app.HasCustomWordForTest("raskladfixture", false) && original.Checked, "dictionary add failed");
+                    original.PerformClick(); Require(!app.HasCustomWordForTest("raskladfixture", false) && !original.Checked, "dictionary remove failed");
+                    menu.Close();
+                    typeof(TrayApp).GetField("lastUnknownWord", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(app, "сдфгву");
+                    typeof(TrayApp).GetField("lastUnknownRussian", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(app, true);
+                    menu.Show(form, new Point(20, 20));
+                    ToolStripMenuItem converted = (ToolStripMenuItem)custom.DropDownItems[1];
+                    Require(converted.Text == "claude (EN)", "other layout must be available even if the system dictionary does not know it");
+                    // The click must use the offered spelling, not mutable lastUnknownWord.
+                    typeof(TrayApp).GetField("lastUnknownWord", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(app, "другое");
+                    converted.PerformClick();
+                    Require(app.HasCustomWordForTest("claude", false) && !app.HasCustomWordForTest("сдфгву", true) && !app.HasCustomWordForTest("другое", true), "wrong spelling added");
+                    string saved = Path.Combine(Path.GetTempPath(), "Rasklad-menu-" + Guid.NewGuid().ToString("N") + ".txt");
+                    try {
+                        object words = typeof(TrayApp).GetField("customWords", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(app);
+                        typeof(TrayApp).GetMethod("SaveCustomWords", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null, new[] { (object)saved, words });
+                        var loaded = (System.Collections.Generic.HashSet<string>)typeof(TrayApp).GetMethod("LoadCustomWords", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null, new object[] { saved });
+                        Require(loaded.Contains("en\tclaude") && !loaded.Contains("ru\tсдфгву"), "selected spelling persistence failed");
+                    } finally { if (File.Exists(saved)) File.Delete(saved); }
+                    menu.Close();
+                    typeof(TrayApp).GetField("lastUnknownWord", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(app, "claude");
+                    typeof(TrayApp).GetField("lastUnknownRussian", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(app, false);
+                    menu.Show(form, new Point(20, 20));
+                    Require(((ToolStripMenuItem)custom.DropDownItems[0]).Checked && custom.DropDownItems[1].Text == "сдфгву (RU)", "saved state or reverse layout choice failed");
+                    ((ToolStripMenuItem)custom.DropDownItems[0]).PerformClick();
+                    Require(!app.HasCustomWordForTest("claude", false), "selected spelling removal failed");
                     menu.Close(); Console.WriteLine("dynamic app exclusion and dictionary commands PASS");
                 } catch (Exception ex) { Console.Error.WriteLine(ex); result = 1; }
                 finally { form.Close(); app.ExitThread(); }

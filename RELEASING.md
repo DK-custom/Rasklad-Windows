@@ -18,6 +18,7 @@
    .\build\Rasklad.exe --hint-test
    .\build\Rasklad.exe --integration-test-apostrophe
    .\build\Rasklad.exe --copilot-test
+   .\build\Rasklad.exe --correction-key-test
    .\build\Rasklad.exe --fn-test
    .\build\Rasklad.exe --punctuation-test
    .\build\Rasklad.exe --startup-test
@@ -46,12 +47,12 @@ Workflow `build.yml` собирает артефакты, но не публик
 
 ```powershell
 # Публичность репозитория разрешена владельцем.
-gh release create v1.0.32 --repo DK-custom/Rasklad-Windows --draft --target main `
-  --title 'Rasklad 1.0.32 для Windows' `
-  --notes-file dist/Rasklad-1.0.32-release-notes.md `
-  dist/Rasklad-1.0.32-windows-x64-Setup.exe `
-  dist/Rasklad-1.0.32-windows-x64-portable.zip `
-  dist/Rasklad-1.0.32-source.zip dist/Rasklad-signing.cer dist/SHA256SUMS.txt
+gh release create v1.0.33 --repo DK-custom/Rasklad-Windows --draft --target main `
+  --title 'Rasklad 1.0.33 для Windows' `
+  --notes-file dist/Rasklad-1.0.33-release-notes.md `
+  dist/Rasklad-1.0.33-windows-x64-Setup.exe `
+  dist/Rasklad-1.0.33-windows-x64-portable.zip `
+  dist/Rasklad-1.0.33-source.zip dist/Rasklad-signing.cer dist/SHA256SUMS.txt
 ```
 
 `dist` должен быть собран из того же коммита, что отправлен в `main` (`git status` чистый).

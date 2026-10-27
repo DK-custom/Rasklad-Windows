@@ -13,10 +13,11 @@ The Windows application is developed separately from [Rasklad for macOS](https:/
 - **Automatic RU ↔ EN layout correction:** `ghbdtn` → `привет` after a word boundary. Short and ambiguous words use additional language rules.
 - **Typo and case correction**, including mixed-layout words such as `cvj;ешь` → `сможешь`.
 - **Copilot or Pause/Break:** convert selected text, manually convert a word, or undo the last correction. Repeated presses switch the same word or selection back and forth, including immediately after a space. The clipboard is not used.
-- **Fn layout switching:** a single Fn press switches RU ↔ EN without changing existing text. Requires a compatible keyboard that reports the supported standalone ThinkPad Fn event (`VK=255`, extended scan code `E0 63`). Fn combinations keep their original functions.
+- **Configurable correction key:** under **Keys → Correction key**, choose Copilot / Break (default), Left/Right Alt or Left/Right Ctrl. Copilot remains an independent option. Alt/Ctrl trigger correction only on a standalone tap and release; chords retain their usual behavior.
+- **Fn layout switching:** a single Fn press uses the Windows input switcher (Win+Space) without changing existing text, including when no text field has focus. With RU/EN configured, this switches RU ↔ EN; additional installed input methods follow the Windows switching order. Requires a compatible keyboard that reports the supported standalone ThinkPad Fn event (`VK=255`, extended scan code `E0 63`). Fn combinations keep their original functions.
 - **Punctuation spacing:** `word ,` → `word,`. Copilot restores the removed space once. Double spaces, opening brackets and dashes are preserved.
 - **Code and password protection:** recognized password fields, excluded applications, terminals, code editors and Markdown code are skipped.
-- **Personal dictionary and application exceptions.** Repeated undo/redo of the same correction does not train the dictionary.
+- **Personal dictionary and application exceptions.** The **Accept spelling** submenu offers the original word, the other layout and Windows spelling suggestions; select a spelling to add it, or select a checked spelling to remove it. Repeated undo/redo of the same correction does not train the dictionary.
 - **English and Russian interface**, selected from the Windows display language at startup. Other display languages use English. The menu language is independent of the active keyboard layout.
 - **Caret-anchored hints**, light/dark themes, rounded tray menu sections and a 10 pt menu font.
 - **Start with Windows** toggle in the tray menu, compatible with the installer's per-user startup shortcut.
@@ -32,7 +33,7 @@ Typed text is not sent anywhere or written to the diagnostic log. Rasklad does n
 
 ## Install
 
-1. Download `Rasklad-1.0.32-windows-x64-Setup.exe` from [Releases](https://github.com/DK-custom/Rasklad-Windows/releases/latest).
+1. Download `Rasklad-1.0.33-windows-x64-Setup.exe` from [Releases](https://github.com/DK-custom/Rasklad-Windows/releases/latest).
 2. Choose startup and desktop shortcuts if needed. Installation is per-user, without administrator rights, under `%LOCALAPPDATA%\Programs\Rasklad`.
 3. Start Rasklad and right-click its tray icon. Enable **Use the Copilot key** or **Fn — switch RU / EN** under **Keys** if supported by your keyboard.
 

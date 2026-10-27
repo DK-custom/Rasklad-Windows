@@ -7,6 +7,7 @@ using System.Windows.Forms;
 
 namespace RaskladWindows {
     static class FnKeyChecks {
+        [DllImport("user32.dll")] private static extern IntPtr SetFocus(IntPtr window);
         private static void Event(TrayApp app, uint vk, uint scan, bool up, bool extended = true) {
             Native.KbdData key = new Native.KbdData { vkCode = vk, scanCode = scan, flags = (extended ? 1u : 0u) | (up ? 128u : 0u) };
             IntPtr data = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(Native.KbdData)));
@@ -41,7 +42,7 @@ namespace RaskladWindows {
                         for (int tap = 0; tap < 6; tap++) {
                             Event(app, 255, 99, false); Event(app, 255, 99, false); await Task.Delay(40);
                             Check(Language(form) == (tap % 2 == 0 ? 0x409 : 0x419), "no change before release " + tap);
-                            Event(app, 255, 99, true); await Task.Delay(120);
+                            Event(app, 255, 99, true); await Task.Delay(350);
                             Check(Language(form) == (tap % 2 == 0 ? 0x419 : 0x409), "Fn toggle " + tap);
                             Check(box.Text == "unchanged" && box.SelectionLength == 9, "text/selection unchanged " + tap);
                         }
@@ -52,8 +53,16 @@ namespace RaskladWindows {
                         Check(Language(form) == before, "other scan code ignored");
                         Enable(app, false); Event(app, 255, 99, false); Event(app, 255, 99, true); await Task.Delay(120);
                         Check(Language(form) == before, "disabled Fn unchanged");
-                        Enable(app, true); Event(app, 255, 99, false); other.Focus(); Event(app, 255, 99, true); await Task.Delay(120);
-                        Check(Language(form) == before, "focus change cancels Fn");
+                        Enable(app, true); Event(app, 255, 99, false);
+                        form.ActiveControl = other; other.Select(); other.Focus();
+                        Check(other.Focused, "fixture moved focus to second field");
+                        Event(app, 255, 99, true); await Task.Delay(120);
+                        Check(Language(form) != before, "Fn works after focus changes within window");
+                        before = Language(form); form.ActiveControl = null; SetFocus(form.Handle);
+                        Check(!box.Focused && !other.Focused, "no text input focused");
+                        Event(app, 255, 99, false); Event(app, 255, 99, true); await Task.Delay(350);
+                        Check(Language(form) != before, "Fn works without text input");
+                        Check(box.Text == "unchanged" && other.Text == "", "Fn sends no text");
                     } catch (Exception ex) { Console.Error.WriteLine(ex); result = 1; }
                     finally { form.Close(); app.ExitThread(); }
                 };
