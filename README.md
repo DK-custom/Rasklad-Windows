@@ -6,15 +6,18 @@ A free, open-source **Punto Switcher alternative for Windows 10/11**. Rasklad au
 
 **[Download the latest Windows installer or portable ZIP](https://github.com/DK-custom/Rasklad-Windows/releases/latest)**
 
+The development branch is **1.0.33.5**; the latest packaged release is **1.0.33**. Features below include unreleased improvements; see [CHANGELOG.md](CHANGELOG.md).
+
 The Windows application is developed separately from [Rasklad for macOS](https://github.com/DK-custom/Rasklad-MacOS). Releases and platform-specific shortcuts are independent.
 
 ## Features
 
 - **Automatic RU ↔ EN layout correction:** `ghbdtn` → `привет` after a word boundary. Short and ambiguous words use additional language rules.
 - **Typo and case correction**, including mixed-layout words such as `cvj;ешь` → `сможешь`.
+- **Whole-word spelling correction:** hyphens and apostrophes stay inside words (`well-knwon` → `well-known`, `don'tt` → `don't`); surrounding punctuation is preserved. Russian corrections include `лючек` → `лючок`. Valid dictionary forms are left unchanged.
 - **Copilot or Pause/Break:** convert selected text, manually convert a word, or undo the last correction. Repeated presses switch the same word or selection back and forth, including immediately after a space. The clipboard is not used.
 - **Configurable correction key:** under **Keys → Correction key**, choose Copilot / Break (default), Left/Right Alt or Left/Right Ctrl. Copilot remains an independent option. Alt/Ctrl trigger correction only on a standalone tap and release; chords retain their usual behavior.
-- **Fn layout switching:** a single Fn press uses the Windows input switcher (Win+Space) without changing existing text, including when no text field has focus. With RU/EN configured, this switches RU ↔ EN; additional installed input methods follow the Windows switching order. Requires a compatible keyboard that reports the supported standalone ThinkPad Fn event (`VK=255`, extended scan code `E0 63`). Fn combinations keep their original functions.
+- **Fn layout switching:** a single Fn press switches RU ↔ EN directly when those are the only two loaded layouts. Other configurations use the Windows input switcher (Win+Space), preserving its input-method order. Existing text and selection remain unchanged, including when no text field has focus. Requires a compatible keyboard that reports the supported standalone ThinkPad Fn event (`VK=255`, extended scan code `E0 63`). Fn combinations keep their original functions.
 - **Punctuation spacing:** `word ,` → `word,`. Copilot restores the removed space once. Double spaces, opening brackets and dashes are preserved.
 - **Code and password protection:** recognized password fields, excluded applications, terminals, code editors and Markdown code are skipped.
 - **Personal dictionary and application exceptions.** The **Accept spelling** submenu offers the original word, the other layout and Windows spelling suggestions; select a spelling to add it, or select a checked spelling to remove it. Repeated undo/redo of the same correction does not train the dictionary.
@@ -92,6 +95,9 @@ Run UI checks separately from the working copy, without keyboard or mouse input:
 .\build\Rasklad.exe --menu-test-fallback
 .\build\Rasklad.exe --copilot-test
 .\build\Rasklad.exe --fn-test
+.\build\Rasklad.exe --fn-stress-test
+.\build\Rasklad.exe --typo-ending-test
+.\build\Rasklad.exe --compound-typo-test
 .\build\Rasklad.exe --punctuation-test
 .\build\Rasklad.exe --startup-test
 ```

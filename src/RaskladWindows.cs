@@ -105,6 +105,37 @@ namespace RaskladWindows {
             return values.Count == 0 ? null : values[0];
         }
 
+        public List<string> TypoSuggestions(string word, bool russianLanguage, int limit) {
+            if (String.IsNullOrEmpty(word)) return new List<string>();
+            List<string> values = Suggestions(word, russianLanguage, limit);
+            if (word.IndexOf('-') < 0) return values;
+            // Windows can suggest only the misspelled component of a hyphenated word.
+            IEnumSpellingErrorNative errors = null;
+            ISpellingErrorNative error = null;
+            try {
+                int hr = ForLanguage(russianLanguage).Check(word, out errors);
+                if (hr != 0) Marshal.ThrowExceptionForHR(hr);
+                hr = errors.Next(out error);
+                if (hr < 0) Marshal.ThrowExceptionForHR(hr);
+                if (error == null) return values;
+                uint start, length;
+                hr = error.get_StartIndex(out start); if (hr != 0) Marshal.ThrowExceptionForHR(hr);
+                hr = error.get_Length(out length); if (hr != 0) Marshal.ThrowExceptionForHR(hr);
+                if (length == 0 || (ulong)start + length > (ulong)word.Length) return values;
+                string prefix = word.Substring(0, (int)start), suffix = word.Substring((int)(start + length));
+                List<string> whole = new List<string>();
+                foreach (string candidate in values) {
+                    string replacement = candidate.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) &&
+                        candidate.EndsWith(suffix, StringComparison.OrdinalIgnoreCase) ? candidate : prefix + candidate + suffix;
+                    if (!whole.Contains(replacement)) whole.Add(replacement);
+                }
+                return whole;
+            } finally {
+                if (error != null) Marshal.ReleaseComObject(error);
+                if (errors != null) Marshal.ReleaseComObject(errors);
+            }
+        }
+
         public void Dispose() {
             if (english != null) Marshal.ReleaseComObject(english);
             if (russian != null) Marshal.ReleaseComObject(russian);
@@ -168,6 +199,7 @@ namespace RaskladWindows {
         [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr window, IntPtr processId);
         [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
         [DllImport("user32.dll")] public static extern IntPtr GetKeyboardLayout(uint threadId);
+        [DllImport("user32.dll")] public static extern int GetKeyboardLayoutList(int count, [Out] IntPtr[] layouts);
         [DllImport("user32.dll")] public static extern IntPtr ActivateKeyboardLayout(IntPtr layout, uint flags);
         [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr LoadKeyboardLayout(string id, uint flags);
         [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] public static extern bool GetKeyboardState(byte[] state);
@@ -192,7 +224,7 @@ namespace RaskladWindows {
     }
 
     sealed class PendingWord {
-        public string original, converted, sourceCheck, targetCheck, suffix;
+        public string original, converted, sourceCheck, targetCheck, suffix, wholeTarget;
         public bool sourceRussian, mixedLayout;
         public int delimiterVk;
         public char delimiter;
@@ -478,6 +510,7 @@ namespace RaskladWindows {
         private static readonly UIntPtr CopilotPauseMarker = new UIntPtr(0x52434F50);
         private bool fnEnabled, fnKeyDown, fnArmed;
         private IntPtr fnWindow, fnFocus;
+        internal int FnDirectForTest, FnFallbackForTest;
         internal bool PopupVisibleForTest { get { return suggestionPopup.Visible; } }
         internal bool PopupFitsForTest { get { return suggestionPopup.FitsForTest; } }
         internal bool PopupNoTaskbarForTest { get { return suggestionPopup.NoTaskbarButtonForTest; } }
@@ -641,10 +674,16 @@ namespace RaskladWindows {
             return (russianLanguage ? "ru\t" : "en\t") + wordText.ToLowerInvariant();
         }
 
+        private static bool IsWordJoiner(char c) { return c == '-' || c == '\'' || c == '\u2019'; }
+
         private static bool ValidCustomWord(string wordText, bool russianLanguage) {
             if (String.IsNullOrEmpty(wordText) || wordText.Length < 2 || wordText.Length > 64) return false;
-            foreach (char c in wordText)
-                if (russianLanguage ? !IsRussian(c) : !IsEnglish(c)) return false;
+            for (int i = 0; i < wordText.Length; i++) {
+                char c = wordText[i];
+                if (russianLanguage ? IsRussian(c) : IsEnglish(c)) continue;
+                if (!IsWordJoiner(c) || i == 0 || i == wordText.Length - 1 ||
+                    !Char.IsLetter(wordText[i - 1]) || !Char.IsLetter(wordText[i + 1])) return false;
+            }
             return true;
         }
 
@@ -734,9 +773,11 @@ namespace RaskladWindows {
             add(converted, convertedRussian);
             int directCount = customWordItem.DropDownItems.Count;
             try {
-                foreach (string suggestion in speller.Suggestions(original, russian, 3)) add(suggestion, russian);
+                List<string> suggestions = speller.TypoSuggestions(original, russian, 3);
+                add(SelectTypoCorrection(original, russian, delegate(string candidate) { return IsKnown(candidate, russian); }, suggestions), russian);
+                foreach (string suggestion in suggestions) add(suggestion, russian);
                 if (ValidCustomWord(converted, convertedRussian))
-                    foreach (string suggestion in speller.Suggestions(converted, convertedRussian, 3)) add(suggestion, convertedRussian);
+                    foreach (string suggestion in speller.TypoSuggestions(converted, convertedRussian, 3)) add(suggestion, convertedRussian);
             } catch (Exception) { DiagnosticLog.Write("error.dictionary_menu_suggestions"); }
             if (customWordItem.DropDownItems.Count > directCount)
                 customWordItem.DropDownItems.Insert(directCount, new ToolStripSeparator());
@@ -915,9 +956,14 @@ namespace RaskladWindows {
                 HashSet<string> sample = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 sample.Add(CustomKey("ghbdtn", false));
                 sample.Add(CustomKey("приветик", true));
+                sample.Add(CustomKey("кто-нибудь", true));
+                sample.Add(CustomKey("well-known", false));
+                sample.Add(CustomKey("can't", false));
+                sample.Add(CustomKey("can’t", false));
                 SaveCustomWords(path, sample);
                 HashSet<string> loaded = LoadCustomWords(path);
-                return loaded.SetEquals(sample);
+                return loaded.SetEquals(sample) && !ValidCustomWord("-hello", false) && !ValidCustomWord("hello-", false) &&
+                    !ValidCustomWord("foo--bar", false) && !ValidCustomWord("can''t", false) && !ValidCustomWord("hello\tworld", false);
             } finally { File.Delete(path); }
         }
 
@@ -984,16 +1030,57 @@ namespace RaskladWindows {
             return distance[first.Length, second.Length];
         }
 
+        internal static string TypoCore(string text) {
+            if (String.IsNullOrEmpty(text)) return "";
+            int first = 0, last = text.Length - 1;
+            while (first <= last && !Char.IsLetter(text[first])) first++;
+            while (last >= first && !Char.IsLetter(text[last])) last--;
+            return first <= last ? text.Substring(first, last - first + 1) : "";
+        }
+
+        private static bool ValidTypoCore(string text) {
+            for (int i = 0; i < text.Length; i++)
+                if (!Char.IsLetter(text[i]) && (!IsWordJoiner(text[i]) || i == 0 || i == text.Length - 1 ||
+                    !Char.IsLetter(text[i - 1]) || !Char.IsLetter(text[i + 1]))) return false;
+            return text.Length > 0;
+        }
+
         internal static string TypoCorrection(string original, string suggestion) {
-            if (String.IsNullOrEmpty(original) || original.Length < 4 || String.IsNullOrEmpty(suggestion) ||
-                original.Equals(suggestion, StringComparison.OrdinalIgnoreCase) ||
-                original == original.ToUpperInvariant() || suggestion.IndexOf(' ') >= 0) return null;
-            foreach (char c in original) if (!Char.IsLetter(c)) return null;
-            foreach (char c in suggestion) if (!Char.IsLetter(c)) return null;
-            int limit = original.Length >= 7 ? 2 : 1;
-            if (Math.Abs(original.Length - suggestion.Length) > limit ||
-                EditDistance(original.ToLowerInvariant(), suggestion.ToLowerInvariant()) > limit) return null;
-            return MatchCase(original, suggestion);
+            string core = TypoCore(original), fixedCore = TypoCore(suggestion);
+            if (core.Length < 4 || fixedCore.Length == 0 || core == core.ToUpperInvariant() ||
+                !ValidTypoCore(core) || !ValidTypoCore(fixedCore)) return null;
+            if (core.IndexOf('\u2019') >= 0 && core.IndexOf('\'') < 0) fixedCore = fixedCore.Replace('\'', '\u2019');
+            int limit = core.Length >= 7 ? 2 : 1;
+            if (core.Equals(fixedCore, StringComparison.OrdinalIgnoreCase) || Math.Abs(core.Length - fixedCore.Length) > limit ||
+                EditDistance(core.ToLowerInvariant(), fixedCore.ToLowerInvariant()) > limit) return null;
+            int start = original.IndexOf(core, StringComparison.Ordinal);
+            return original.Substring(0, start) + MatchCase(core, fixedCore) + original.Substring(start + core.Length);
+        }
+
+        internal static string SelectTypoCorrection(string original, bool russian, Func<string, bool> isKnown, IList<string> suggestions) {
+            string core = TypoCore(original), lower = core.ToLowerInvariant();
+            if (core.Length < 4 || !ValidTypoCore(core) || isKnown(lower)) return null;
+            // This bound suffix is not suggested as a standalone word by Windows.
+            if (russian && lower.EndsWith("-нибуть", StringComparison.Ordinal)) {
+                string candidate = lower.Substring(0, lower.Length - 6) + "нибудь";
+                if (isKnown(candidate)) return TypoCorrection(original, candidate);
+            }
+            // Windows often ranks a different inflection/root before the intended -чок.
+            // Only try this ending for an unknown source and a dictionary-confirmed target.
+            if (russian && ValidCustomWord(core, true) && lower.EndsWith("чек", StringComparison.Ordinal)) {
+                string candidate = lower.Substring(0, lower.Length - 2) + "ок";
+                if (isKnown(candidate)) {
+                    string preferred = TypoCorrection(original, candidate);
+                    if (preferred != null) return preferred;
+                }
+            }
+            if (suggestions != null)
+                foreach (string candidate in suggestions) {
+                    if (String.IsNullOrEmpty(candidate) || !isKnown(TypoCore(candidate).ToLowerInvariant())) continue;
+                    string corrected = TypoCorrection(original, candidate);
+                    if (corrected != null) return corrected;
+                }
+            return null;
         }
 
         internal static string CaseCorrectionForTest(string original, Func<string, bool> isKnown) {
@@ -1183,6 +1270,7 @@ namespace RaskladWindows {
             bool delimiterSent = false;
             try {
                 InputContext context = await GetInputContextAsync();
+                if (Program.TestMode && context.Protected) Console.WriteLine("pending context: " + context.SkipReason);
                 if (context.Protected) DiagnosticLog.Write(context.SkipReason);
                 if (IsProtectedCode(item.foreground, context)) DiagnosticLog.Write("skip.code");
                 if (Native.GetForegroundWindow() != item.foreground ||
@@ -1190,6 +1278,7 @@ namespace RaskladWindows {
                 if (!context.Protected && InputAccess.Allows(item.foreground) && !IsProtectedCode(item.foreground, context) &&
                     Native.GetForegroundWindow() == item.foreground &&
                     (item.focus == IntPtr.Zero || FocusedWindow(item.foreground) == item.focus)) {
+                    ResolveDotEnding(item);
                     string prescribed;
                     if (typoEnabled && !customWords.Contains(CustomKey(item.sourceCheck, item.sourceRussian)) &&
                         replacementRules.TryGet(item.sourceCheck, item.sourceRussian, out prescribed)) {
@@ -1238,8 +1327,9 @@ namespace RaskladWindows {
                         if (ambiguousWord && item.delimiterVk == Native.VK_SPACE) ambiguousPrevious = item;
                     }
                     if (!sourceCorrect) {
-                        if (!ambiguousWord && ValidCustomWord(item.sourceCheck, item.sourceRussian)) {
-                            lastUnknownWord = item.sourceCheck;
+                        string unknown = TypoCore(item.sourceCheck);
+                        if (!ambiguousWord && ValidCustomWord(unknown, item.sourceRussian)) {
+                            lastUnknownWord = unknown;
                             lastUnknownRussian = item.sourceRussian;
                         }
                         bool targetCorrect = autoEnabled && item.converted != null &&
@@ -1285,9 +1375,9 @@ namespace RaskladWindows {
                             if (delimiterSent && correctedTargetCase != null) TurnOffCapsLock();
                         } else {
                             if (typoEnabled && !item.mixedLayout && item.sourceCheck.Length >= 4) {
-                                if (sourceSuggestion == null)
-                                    sourceSuggestion = speller.FirstSuggestion(item.sourceCheck.ToLowerInvariant(), item.sourceRussian);
-                                string corrected = TypoCorrection(item.sourceCheck, sourceSuggestion);
+                                string corrected = SelectTypoCorrection(item.sourceCheck, item.sourceRussian,
+                                    delegate(string candidate) { return IsKnown(candidate, item.sourceRussian); },
+                                    speller.TypoSuggestions(TypoCore(item.sourceCheck).ToLowerInvariant(), item.sourceRussian, 8));
                                 if (corrected != null) {
                                     string correctedCase = CaseCorrectionForTest(corrected,
                                         delegate(string candidate) { return IsKnown(candidate, item.sourceRussian); });
@@ -1385,11 +1475,12 @@ namespace RaskladWindows {
             }
         }
 
-        private async void ProcessManual() {
+        private void ProcessManual(InputContext context) {
             PendingWord item = manual;
             manual = null;
             try {
-                InputContext context = await GetInputContextAsync();
+                if (!context.Protected && item != null) ResolveDotEnding(item);
+                if (Program.TestMode) Console.WriteLine("manual context protected=" + context.Protected + " reason=" + context.SkipReason + " item=" + (item != null));
                 if (context.Protected) DiagnosticLog.Write(context.SkipReason);
                 if (!context.Protected && item != null && InputAccess.Allows(item.foreground) && Native.GetForegroundWindow() == item.foreground &&
                     (item.focus == IntPtr.Zero || FocusedWindow(item.foreground) == item.focus) &&
@@ -1404,7 +1495,8 @@ namespace RaskladWindows {
                         foreground = item.foreground, focus = item.focus,
                         sourceLayout = item.originalLayout, sourceRussian = item.sourceRussian,
                         fieldBounds = context.FieldBounds, caretPoint = context.CaretPoint };
-                }
+                    DiagnosticLog.Write("correction.manual_done");
+                } else DiagnosticLog.Write("correction.manual_skipped");
             } catch (Exception ex) {
                 if (Program.TestMode) Console.WriteLine(ex);
                 DiagnosticLog.Write("error.manual_correction");
@@ -1492,6 +1584,7 @@ namespace RaskladWindows {
         private async void ProcessCorrection(IntPtr window, IntPtr focus, int revision) {
             bool delegated = false;
             try {
+                DiagnosticLog.Write("correction.started");
                 if (!InputAccess.Allows(window)) return;
                 InputContext context;
                 if ((Program.TestMode && ForceAutomationSelectionForTest) || !TryNativeSelection(focus, out context)) context = await GetInputContextAsync(true);
@@ -1505,7 +1598,7 @@ namespace RaskladWindows {
                     bool targetRussian;
                     string replacement = ConvertSelectedText(context.SelectionText,
                         unchecked((ushort)originalLayout.ToInt64()) == 0x0419, out targetRussian);
-                    if (replacement == null || replacement == context.SelectionText) return;
+                    if (replacement == null || replacement == context.SelectionText) { DiagnosticLog.Write("correction.selection_unchanged"); return; }
                     bool replaced = context.NativeSelectionStart >= 0
                         ? ReplaceNativeRange(focus, context.NativeSelectionStart, context.SelectionText, replacement)
                         : ReplaceTypedWord(0, replacement, 0, '\0');
@@ -1518,9 +1611,11 @@ namespace RaskladWindows {
                             fieldBounds = context.FieldBounds, caretPoint = context.CaretPoint, selectionStart = context.NativeSelectionStart >= 0 ? context.NativeSelectionStart : -2 };
                         manual = null; word.Clear(); recent = null; ResetTypingContext();
                         NotifyChange(context.SelectionText, replacement, true, context.FieldBounds, context.CaretPoint);
-                    }
+                        DiagnosticLog.Write("correction.selection_done");
+                    } else DiagnosticLog.Write("correction.selection_failed");
                 } else if (undo != null && undo.foreground == window &&
                     (undo.focus == IntPtr.Zero || undo.focus == focus)) {
+                    DiagnosticLog.Write("correction.undo_requested");
                     if (undo.selectionStart == -2) {
                         UndoRecord record = undo; undo = null;
                         IntPtr previousLayout = Native.GetKeyboardLayout(Native.GetWindowThreadProcessId(window, IntPtr.Zero));
@@ -1552,11 +1647,12 @@ namespace RaskladWindows {
                             Native.SendMessageTimeout(window, Native.WM_INPUTLANGCHANGEREQUEST, IntPtr.Zero, record.sourceLayout, 2, 150, out ignored);
                             undo = ReverseCorrection(record, previousLayout);
                             NotifyChange(record.original, UiText.Get("отмена замены", "correction undone"), false, record.fieldBounds, record.caretPoint);
-                        }
+                        } else DiagnosticLog.Write("correction.undo_range_unavailable");
                     } else { delegated = true; ProcessUndo(); }
                 } else if (manual != null) {
-                    delegated = true; ProcessManual();
-                }
+                    DiagnosticLog.Write("correction.manual_requested");
+                    delegated = true; ProcessManual(context);
+                } else DiagnosticLog.Write("correction.no_word_or_selection");
             } catch (Exception ex) {
                 if (Program.TestMode) Console.WriteLine(ex);
                 DiagnosticLog.Write("error.selection");
@@ -1641,10 +1737,30 @@ namespace RaskladWindows {
         private async void SwitchFnLayout(IntPtr window, IntPtr focus) {
             for (int i = 0; i < 15 && (pending != null || undoPending); i++) await Task.Delay(50);
             if (!fnEnabled || pending != null || undoPending || Native.GetForegroundWindow() != window) return;
+            // Avoid reopening the Windows input switcher for every RU/EN tap. Keep its
+            // full input-method ordering as the fallback for other configurations.
+            if (Native.GetKeyboardLayoutList(0, null) == 2) {
+                IntPtr[] layouts = new IntPtr[2];
+                if (Native.GetKeyboardLayoutList(2, layouts) == 2 &&
+                    Array.IndexOf(layouts, russianLayout) >= 0 && Array.IndexOf(layouts, englishLayout) >= 0) {
+                    uint thread = Native.GetWindowThreadProcessId(window, IntPtr.Zero);
+                    IntPtr current = Native.GetKeyboardLayout(thread);
+                    if (current == russianLayout || current == englishLayout) {
+                        IntPtr target = current == russianLayout ? englishLayout : russianLayout, ignored;
+                        if (Native.SendMessageTimeout(window, Native.WM_INPUTLANGCHANGEREQUEST, IntPtr.Zero,
+                            target, 2, 50, out ignored) != IntPtr.Zero && Native.GetKeyboardLayout(thread) == target) {
+                            DiagnosticLog.Write("layout.fn_direct");
+                            if (Program.TestMode) FnDirectForTest++;
+                            return;
+                        }
+                    }
+                }
+            }
             // Use Windows' input switcher: it also works on the desktop and when no edit has focus.
             // This sends no text and does not inspect the target application's input field.
             Native.Input[] keys = { VirtualKey(Native.VK_LWIN, false), VirtualKey(Native.VK_SPACE, false),
                 VirtualKey(Native.VK_SPACE, true), VirtualKey(Native.VK_LWIN, true) };
+            if (Program.TestMode) FnFallbackForTest++;
             if (Native.SendInput((uint)keys.Length, keys, Marshal.SizeOf(typeof(Native.Input))) != keys.Length)
                 DiagnosticLog.Write("layout.fn_failed");
             DiagnosticLog.Write("layout.fn_requested");
@@ -1740,6 +1856,11 @@ namespace RaskladWindows {
                     if (captured) return (IntPtr)1;
                 }
                 if (keyDownEvent && correctionKeyDown) return (IntPtr)1;
+                if (keyDownEvent) {
+                    DiagnosticLog.Write("correction.key_received");
+                    if (Down(vk) || Pressed(Native.VK_SHIFT)) DiagnosticLog.Write("correction.modifier_still_down");
+                    if (pending != null || undoPending) DiagnosticLog.Write("correction.queued_while_busy");
+                }
                 // Modified Pause/Break retains its usual application shortcut.
                 if (keyDownEvent && !Down(vk) && !Pressed(Native.VK_SHIFT) && pending == null && !undoPending) {
                     IntPtr pauseWindow = Native.GetForegroundWindow();
@@ -1847,8 +1968,8 @@ namespace RaskladWindows {
                 return Native.CallNextHookEx(keyboardHook, code, wParam, lParam);
             }
             bool possibleRussianLetter = language == 0x0409 &&
-                (c == '\'' || (word.Count > 0 ? c == ',' || c == ';' : c == ',' || c == '['));
-            if (IsRussian(c) || IsEnglish(c) || possibleRussianLetter) {
+                (c == '\'' || (word.Count > 0 ? c == ',' || c == ';' || c == '.' : c == ',' || c == '['));
+            if (IsRussian(c) || IsEnglish(c) || possibleRussianLetter || word.Count > 0 && IsWordJoiner(c)) {
                 if (word.Count == 0) wordLanguage = language;
                 if (word.Count >= 64) word.Clear();
                 word.Add(new KeyStroke { vk = key.vkCode, scan = key.scanCode, language = language,
@@ -1873,6 +1994,16 @@ namespace RaskladWindows {
         }
 
         private string JoinWord() { StringBuilder result = new StringBuilder(word.Count); foreach (KeyStroke stroke in word) result.Append(stroke.character); return result.ToString(); }
+
+        private void ResolveDotEnding(PendingWord item) {
+            // A final dot can be punctuation or the Russian letter ю. Ask the dictionaries
+            // outside the keyboard hook, preserving punctuation after a known source word.
+            if (item.wholeTarget == null || IsKnown(item.sourceCheck.ToLowerInvariant(), item.sourceRussian) ||
+                !IsKnown(item.wholeTarget.ToLowerInvariant(), !item.sourceRussian)) return;
+            item.sourceCheck = item.original;
+            item.targetCheck = item.converted = item.wholeTarget;
+            item.suffix = "";
+        }
 
         private static bool IsShortLayoutWord(PendingWord item) {
             if (item == null || item.sourceCheck == null || item.targetCheck == null || item.mixedLayout ||
@@ -1914,6 +2045,7 @@ namespace RaskladWindows {
             uint thread = Native.GetWindowThreadProcessId(active, IntPtr.Zero);
             return new PendingWord { original = original, sourceCheck = original.Substring(0, coreLength),
                 targetCheck = targetCheck, suffix = suffix,
+                wholeTarget = !sourceRussian && suffix.IndexOf('.') >= 0 ? ConvertWord(russianLayout, word.Count) : null,
                 converted = targetCheck == null ? null : targetCheck + suffix,
                 sourceRussian = sourceRussian, mixedLayout = mixed,
                 delimiterVk = delimiterVk, delimiter = delimiter,
@@ -1924,8 +2056,8 @@ namespace RaskladWindows {
             StringBuilder result = new StringBuilder(length);
             for (int i = 0; i < length; i++) {
                 KeyStroke stroke = word[i];
-                char c = Translate(stroke.vk, stroke.scan, stroke.keyboardState, targetLayout);
-                if (!IsRussian(c) && !IsEnglish(c)) return null;
+                char c = stroke.character == '\u2019' ? stroke.character : Translate(stroke.vk, stroke.scan, stroke.keyboardState, targetLayout);
+                if (!IsRussian(c) && !IsEnglish(c) && !IsWordJoiner(c)) return null;
                 result.Append(c);
             }
             return result.ToString();
@@ -2425,6 +2557,24 @@ namespace RaskladWindows {
                 }
             }
             using (WindowsSpeller speller = new WindowsSpeller()) {
+                string[] compoundWords = { "кто-нибуть", "well-knwon", "don'tt", "don’tt", "'don'tt'" };
+                string[] compoundExpected = { "кто-нибудь", "well-known", "don't", "don’t", "'don't'" };
+                for (int i = 0; i < compoundWords.Length; i++) {
+                    bool ru = i == 0;
+                    string actual = TrayApp.SelectTypoCorrection(compoundWords[i], ru,
+                        delegate(string word) { return speller.IsCorrect(word, ru); },
+                        speller.TypoSuggestions(TrayApp.TypoCore(compoundWords[i]).ToLowerInvariant(), ru, 8));
+                    Console.WriteLine("Compound dictionary " + i + " match=" + (actual == compoundExpected[i]));
+                    if (actual != compoundExpected[i]) return 1;
+                }
+                string[] typoWords = { "лючек", "крючек", "значек", "пучек", "червячек", "мешечек", "горшечек", "мячек", "ключек", "Лючек", "ЛЮЧЕК", "скачек", "замочек", "цветочек", "человечек", "платочек", "сыночек" };
+                string[] typoExpected = { "лючок", "крючок", "значок", "пучок", "червячок", "мешочек", "горшочек", "мячик", "ключик", "Лючок", null, null, null, null, null, null, null };
+                for (int i = 0; i < typoWords.Length; i++) {
+                    string actual = TrayApp.SelectTypoCorrection(typoWords[i], true,
+                        delegate(string word) { return speller.IsCorrect(word, true); }, speller.Suggestions(typoWords[i].ToLowerInvariant(), true, 8));
+                    Console.WriteLine("RU typo " + i + " match=" + (actual == typoExpected[i]));
+                    if (actual != typoExpected[i]) return 1;
+                }
                 string[] words = { "привет", "превед", "hello", "helllo", "ghbdtn", "руддщ" };
                 bool[] expected = { true, false, true, false, false, false };
                 bool[] languages = { true, true, false, false, false, true };
@@ -2447,7 +2597,10 @@ namespace RaskladWindows {
                 if (args.Length == 1 && args[0] == "--dpi-test") return UiDpiChecks.Run();
                 if (args.Length == 1 && args[0] == "--copilot-test") return CopilotChecks.Run();
                 if (args.Length == 1 && args[0] == "--correction-key-test") return CorrectionKeyChecks.Run();
+                if (args.Length == 1 && args[0] == "--typo-ending-test") return CorrectionKeyChecks.Run(true);
+                if (args.Length == 1 && args[0] == "--compound-typo-test") return CorrectionKeyChecks.Run(false, true);
                 if (args.Length == 1 && args[0] == "--fn-test") return FnKeyChecks.Run();
+                if (args.Length == 1 && args[0] == "--fn-stress-test") return FnKeyChecks.Run(true);
                 if (args.Length == 1 && args[0] == "--punctuation-test") return PunctuationChecks.Run();
                 if (args.Length == 1 && args[0] == "--startup-test") return StartupRegistration.Check();
                 if (args.Length == 1 && args[0] == "--self-test") return SelfTest();

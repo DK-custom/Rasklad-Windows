@@ -31,16 +31,22 @@ namespace RaskladWindows {
             if (attached) Native.AttachThreadInput(current, previous, false);
             await Task.Delay(150); Check(box.Focused && Native.GetForegroundWindow() == form.Handle, "fixture focus");
         }
-        private static async Task TypeCodeFixture(Form form, string text) {
-            IntPtr english = Native.LoadKeyboardLayout("00000409", 0), ignored;
-            Native.SendMessageTimeout(form.Handle, Native.WM_INPUTLANGCHANGEREQUEST, IntPtr.Zero, english, 2, 150, out ignored);
+        private static async Task TypeCodeFixture(Form form, string text, bool russian = false) {
+            IntPtr layout = Native.LoadKeyboardLayout(russian ? "00000419" : "00000409", 0), ignored;
+            Native.SendMessageTimeout(form.Handle, Native.WM_INPUTLANGCHANGEREQUEST, IntPtr.Zero, layout, 2, 150, out ignored);
             foreach (char c in text) {
-                int vk = c == '`' ? 192 : c == ' ' ? 32 : Char.ToUpperInvariant(c);
+                if (Native.GetForegroundWindow() != form.Handle || !form.ContainsFocus)
+                    throw new Exception("Fixture lost focus during typing");
+                short mapped = Native.VkKeyScanEx(c, layout);
+                if (mapped == -1 || (mapped & 0x600) != 0) throw new Exception("Unmappable fixture character");
+                int vk = mapped & 0xff;
+                if ((mapped & 0x100) != 0) Send(160);
                 Send(vk, -vk); await Task.Delay(30);
+                if ((mapped & 0x100) != 0) Send(-160);
             }
             await Task.Delay(600);
         }
-        internal static int Run() {
+        internal static int Run(bool typoOnly = false, bool compoundOnly = false) {
             Program.TestMode = true; Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false);
             TrayApp app = new TrayApp(); Set(app, "autoEnabled", false); Set(app, "typoEnabled", false);
             int result = 0;
@@ -55,6 +61,98 @@ namespace RaskladWindows {
                         Native.SetForegroundWindow(form.Handle); box.Focus();
                         if (attached) Native.AttachThreadInput(current, previous, false);
                         await Task.Delay(150); Check(box.Focused, "fixture focus");
+                        if (compoundOnly) {
+                            Set(app, "typoEnabled", true);
+                            await Focus(form, box);
+                            MethodInfo readContext = typeof(TrayApp).GetMethod("GetInputContextAsync", BindingFlags.Static | BindingFlags.NonPublic);
+                            InputContext ready = await (Task<InputContext>)readContext.Invoke(null, new object[] { false });
+                            if (ready.Protected && ready.SkipReason == "skip.context_timeout") {
+                                await Task.Delay(500); // Cold UIA providers can initialize after the first bounded query.
+                                ready = await (Task<InputContext>)readContext.Invoke(null, new object[] { false });
+                            }
+                            Check(!ready.Protected && Native.GetForegroundWindow() == form.Handle, "compound fixture context ready");
+                            string[] input = { "кто-нибуть", "well-knwon", "don'tt", "'don'tt'", "helo-world", "hello-world", "can't", "кто-нибудь" };
+                            string[] output = { "кто-нибудь", "well-known", "don't", "'don't'", "hello-world", "hello-world", "can't", "кто-нибудь" };
+                            for (int i = 0; i < input.Length; i++) {
+                                await Focus(form, box); app.ResetContextForTest(); box.Clear();
+                                await TypeCodeFixture(form, input[i] + " ", i == 0 || i == 7);
+                                Check(box.Text == output[i] + " ", "compound real input " + i);
+                                if (i == 0) {
+                                    Send(19, -19); await Task.Delay(500);
+                                    Check(box.Text == input[i] + " ", "compound typo undo");
+                                }
+                            }
+                            app.AddCustomWordForTest("helo-world", false);
+                            await Focus(form, box); app.ResetContextForTest(); box.Clear();
+                            await TypeCodeFixture(form, "helo-world ");
+                            Check(box.Text == "helo-world ", "compound accepted spelling");
+                            app.RemoveCustomWordForTest("helo-world", false);
+                            await Focus(form, box); app.ResetContextForTest(); box.Text = "`"; box.SelectionStart = box.TextLength;
+                            await TypeCodeFixture(form, "don'tt ");
+                            Check(box.Text == "`don'tt ", "compound code protection");
+                            await Focus(form, box); app.ResetContextForTest(); box.Text = "`code` "; box.SelectionStart = box.TextLength;
+                            await TypeCodeFixture(form, "don'tt ");
+                            Check(box.Text == "`code` don't ", "compound outside closed code");
+                            Set(app, "typoEnabled", false);
+                            await Focus(form, box); app.ResetContextForTest(); box.Clear();
+                            await TypeCodeFixture(form, "well-knwon ");
+                            Check(box.Text == "well-knwon ", "compound disabled typos");
+                            Set(app, "typoEnabled", true);
+                            await Focus(form, password); app.ResetContextForTest(); password.Clear();
+                            await TypeCodeFixture(form, "don'tt ");
+                            Check(password.Text == "don'tt ", "compound password protection");
+                            Set(app, "autoEnabled", true);
+                            await Focus(form, box); app.ResetContextForTest(); box.Clear();
+                            await TypeCodeFixture(form, "ghbdtn-vbh ");
+                            Check(box.Text == "привет-мир ", "compound layout conversion");
+                            return;
+                        }
+                        if (typoOnly) {
+                            Set(app, "typoEnabled", true);
+                            string[] input = { "лючек", "крючек", "значек", "пучек", "скачек", "замочек", "мячек" };
+                            string[] output = { "лючок", "крючок", "значок", "пучок", "скачек", "замочек", "мячик" };
+                            for (int i = 0; i < input.Length; i++) {
+                                await Focus(form, box); app.ResetContextForTest(); box.Clear();
+                                await TypeCodeFixture(form, input[i] + " ", true);
+                                Console.WriteLine("Russian fixture actual=" + box.Text);
+                                Check(box.Text == output[i] + " ", "Russian typo input " + i);
+                                if (i == 0) {
+                                    Send(19, -19); await Task.Delay(500);
+                                    Check(box.Text == input[i] + " ", "Russian typo undo");
+                                }
+                            }
+                            app.AddCustomWordForTest("лючек", true);
+                            await Focus(form, box); app.ResetContextForTest(); box.Clear();
+                            await TypeCodeFixture(form, "лючек ", true);
+                            Check(box.Text == "лючек ", "accepted spelling preserved");
+                            app.RemoveCustomWordForTest("лючек", true);
+                            Set(app, "typoEnabled", false);
+                            await Focus(form, box); app.ResetContextForTest(); box.Clear();
+                            await TypeCodeFixture(form, "лючек ", true);
+                            Check(box.Text == "лючек ", "disabled typos preserved");
+                            Set(app, "typoEnabled", true);
+                            await Focus(form, password); app.ResetContextForTest(); password.Clear();
+                            await TypeCodeFixture(form, "лючек ", true);
+                            Check(password.Text == "лючек ", "Russian typo password protection");
+                            return;
+                        }
+                        foreach (string suffix in new[] { "", " " }) {
+                            await Focus(form, box); app.ResetContextForTest(); box.Clear();
+                            await TypeCodeFixture(form, "gjlrk.xbk" + suffix);
+                            Send(19, -19); await Task.Delay(500);
+                            Check(box.Text == "подключил" + suffix, "internal dot manual whole word " + suffix.Length);
+                            Send(19, -19); await Task.Delay(500);
+                            Check(box.Text == "gjlrk.xbk" + suffix, "internal dot manual reverse " + suffix.Length);
+                        }
+                        Set(app, "autoEnabled", true);
+                        string[] physical = { "gjlrk.xbk ", "k.,k. ", "ghbdtn. ", "hello. ", "example.com ", "12.34 " };
+                        string[] expected = { "подключил ", "люблю ", "привет. ", "hello. ", "example.com ", "12.34 " };
+                        for (int dotCase = 0; dotCase < physical.Length; dotCase++) {
+                            await Focus(form, box); app.ResetContextForTest(); box.Clear();
+                            await TypeCodeFixture(form, physical[dotCase]);
+                            Check(box.Text == expected[dotCase], "internal dot auto/punctuation " + dotCase);
+                        }
+                        Set(app, "autoEnabled", false);
                         foreach (int vk in new[] { 19, 164, 165, 162, 163 }) {
                             await Focus(form, box); Set(app, "correctionKey", vk); app.ResetContextForTest(); box.Text = "ghbdtn"; box.SelectAll();
                             Send(vk, -vk); await Task.Delay(400); Check(box.Text == "привет", "selectable key " + vk);

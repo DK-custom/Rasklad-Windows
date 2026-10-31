@@ -1,3 +1,19 @@
+# Unreleased — local build 1.0.33.5
+
+- Treat internal hyphens and straight/curly apostrophes as word joiners. Preserve surrounding punctuation and apostrophe style during typo correction; keep abbreviation and edit-distance limits.
+- Reconstruct complete hyphenated candidates from Windows spelling-error ranges, so a component suggestion never drops the rest of the word. Check dictionary-confirmed -нибудь candidates when Windows only suggests standalone fragments.
+- Personal dictionary and spelling-choice menu support joined words. Tests cover whole-word correction/undo, quotes, accepted spellings, disabled corrections, code/password protection and layout conversion.
+
+- Validate spelling suggestions against the dictionaries and consider up to eight candidates instead of blindly using the first suggestion. For unknown Russian words ending in -чек, prefer a dictionary-confirmed -чок correction; valid words, accepted user spellings, case and distance limits remain protected.
+- Add Russian typo regression checks, including лючек→лючок, крючек→крючок, значек→значок, пучек→пучок, мячек→мячик and ключек→ключик. Keep скачек unchanged because it is a valid word form requiring context.
+
+- Fast Fn switching for systems with exactly the loaded RU/EN layouts: request the target layout directly instead of simulating Win+Space on every tap. Other configurations retain the Windows input switcher fallback. Verified with 480 switches, text/selection preservation and no text-field focus.
+- Add --fn-stress-test with delivery counts and latency measurements; retain the local fixes from 1.0.33.2 below.
+
+- Keep an internal dot in the word buffer: gjlrk.xbk converts as a whole to подключил, automatically and manually. Resolve an ambiguous final dot as Russian ю only for a known target word while preserving punctuation after known source words.
+- Reuse the validated correction context for manual conversion instead of making a second UI Automation request that could time out and silently skip the correction.
+- Retain metadata-only correction diagnostics from local build 1.0.33.1.
+
 # Rasklad 1.0.33 — Windows x64
 
 - «Считать правильным» предлагает исходное слово, вариант в другой раскладке и до трёх предложений системного словаря для каждого языка. Выбранное написание сохраняется в пользовательском словаре; повторный выбор удаляет запись.

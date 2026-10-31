@@ -5,6 +5,12 @@ using System.Drawing;
 namespace RaskladWindows {
     static class RuntimeChecks {
         internal static void Run() {
+            string[] compoundInput = { "кто-нибуть", "well-knwon", "don'tt", "don’tt", "'helllo'", "(well-knwon)!", "helllo-", "WELL-KNWON", "hello—wrld", "foo/bar", "foo--bar", "abc123" };
+            string[] compoundSuggestion = { "кто-нибудь", "well-known", "don't", "don't", "hello", "well-known", "hello", "well-known", "hello-world", "foo-bar", "foo-bar", "abc" };
+            string[] compoundExpected = { "кто-нибудь", "well-known", "don't", "don’t", "'hello'", "(well-known)!", "hello-", null, null, null, null, null };
+            for (int i = 0; i < compoundInput.Length; i++)
+                if (TrayApp.TypoCorrection(compoundInput[i], compoundSuggestion[i]) != compoundExpected[i])
+                    throw new Exception("Compound spelling/punctuation regression " + i);
             CodeCaret.CheckInterop();
             if (!CodeCaret.CodeRoleForTest("code") || CodeCaret.CodeRoleForTest("textbox") || CodeCaret.CodeRoleForTest("code-editor"))
                 throw new Exception("Code semantic role recognition failed");

@@ -54,9 +54,9 @@ namespace RaskladWindows {
             Console.WriteLine(name + ": " + valid + " startMenu=" + startMenuActivations);
             if (!valid || startMenuActivations != 0) throw new Exception(name);
         }
-        private static async Task Type(TrayApp app, Form form, TextBox box, string text) {
+        private static async Task Type(TrayApp app, Form form, TextBox box, string text, bool russian = false) {
             app.ResetContextForTest(); box.Clear(); startMenuActivations = 0;
-            IntPtr english = (IntPtr)typeof(TrayApp).GetField("englishLayout", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(app);
+            IntPtr english = (IntPtr)typeof(TrayApp).GetField(russian ? "russianLayout" : "englishLayout", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(app);
             IntPtr ignored; Native.SendMessageTimeout(form.Handle, Native.WM_INPUTLANGCHANGEREQUEST, IntPtr.Zero, english, 2, 150, out ignored);
             foreach (char c in text) {
                 int vk = c == ' ' ? 32 : Char.ToUpperInvariant(c);
@@ -95,6 +95,18 @@ namespace RaskladWindows {
                             if (!again || startMenuActivations != 0) result = 1;
                         }
                         Set(app, "typoEnabled", false);
+                        app.AddCustomWordForTest("claude", false);
+                        foreach (bool russian in new[] { false, true })
+                            foreach (string suffix in new[] { "", " " }) {
+                                await Focus(form, box);
+                                await Type(app, form, box, "claude" + suffix, russian);
+                                await Chord("fast"); await Task.Delay(700);
+                                Check(box.Text == (russian ? "claude" : "сдфгву") + suffix,
+                                    "custom claude immediate " + russian + "/" + suffix.Length);
+                                await Chord("fast"); await Task.Delay(700);
+                                Check(box.Text == (russian ? "сдфгву" : "claude") + suffix,
+                                    "custom claude repeat " + russian + "/" + suffix.Length);
+                            }
                         foreach (string input in new[] { "ghbdtn", "ghbdtn ", "b ", "foo ghbdtn " }) {
                             await Focus(form, box); await Type(app, form, box, input);
                             string mapped = input.Replace("ghbdtn", "привет").Replace("b ", "и ");

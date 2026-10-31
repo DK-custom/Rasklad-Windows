@@ -19,7 +19,10 @@
    .\build\Rasklad.exe --integration-test-apostrophe
    .\build\Rasklad.exe --copilot-test
    .\build\Rasklad.exe --correction-key-test
+   .\build\Rasklad.exe --typo-ending-test
+   .\build\Rasklad.exe --compound-typo-test
    .\build\Rasklad.exe --fn-test
+   .\build\Rasklad.exe --fn-stress-test
    .\build\Rasklad.exe --punctuation-test
    .\build\Rasklad.exe --startup-test
    ```
